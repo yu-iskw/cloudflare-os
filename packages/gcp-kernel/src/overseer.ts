@@ -17,24 +17,6 @@ import { GitStore } from "@gadgets/gcp-git";
 import { sandboxDo } from "@gadgets/gcp-sandbox";
 import { completeThroughGateway, defaultArmorFloor } from "@gadgets/gcp-agent";
 import { dummySub } from "./rpc-stubs.js";
-import type {
-  ActionHistoryPage,
-  AiChatAuthorInfo,
-  AiChatHistoryPage,
-  AiChatMessage,
-  AiChatMetadata,
-  AiChatSubscriber,
-  BoundHookInfo,
-  GadgetMetadata,
-  Overseer,
-  SlashCommandChoice,
-  WorkpiecesSubscriber,
-} from "@gadgets/workshop-shared/api";
-import { MemoryLedger, type ChatMessageRow } from "@gadgets/gcp-ledger";
-import { GitStore } from "@gadgets/gcp-git";
-import { sandboxDo } from "@gadgets/gcp-sandbox";
-import { completeThroughGateway, defaultArmorFloor } from "@gadgets/gcp-agent";
-import { dummySub } from "./rpc-stubs.js";
 
 const DEFAULT_MODEL: AiChatAuthorInfo = {
   type: "agent",
