@@ -44,7 +44,7 @@ vi.mock('./AuthContext', () => {
 })
 
 import { entry, makeOverseer, makeTestRoot } from './action-test-harness'
-import ChatInterface from './ChatInterface'
+import ChatInterface, { primeChatHistory } from './ChatInterface'
 import { linkActionLog } from './useActions'
 
 const testRoot = makeTestRoot()
@@ -192,5 +192,40 @@ describe('ChatInterface history', () => {
     await vi.waitFor(() => {
       expect(document.body.textContent).toContain('1+1')
     })
+  })
+
+  it('paints a primed history page on first mount', async () => {
+    const workspaceId = `ws-prime-${crypto.randomUUID()}`
+    primeChatHistory(workspaceId, 1, {
+      messages: [{
+        chatId: 1,
+        sequence: 0,
+        timestamp: new Date(),
+        author: { type: 'user', id: 'ada', name: 'Ada' },
+        type: 'message',
+        message: '```js\n1+1\n```',
+      }],
+    })
+    const server = makeOverseer()
+    withChatApi(server)
+    Object.assign(server.overseer as object, {
+      getChatHistory: vi.fn(async () => ({ messages: [] })),
+    })
+    await testRoot.render(
+      <ChatInterface
+        workspaceId={workspaceId}
+        overseer={server.overseer}
+        selectedChatId={1}
+        onNavigateToChat={() => {}}
+        pendingConsoleLogCount={0}
+        consoleLogPreview=""
+        consoleLogSeverity="info"
+        onConsumeConsoleLogs={() => ''}
+        onDiscardConsoleLogs={() => {}}
+        onOpenGadget={() => {}}
+        outputOfWorkpiece={() => undefined}
+      />,
+    )
+    expect(document.body.textContent).toContain('1+1')
   })
 })

@@ -2519,7 +2519,10 @@ const chatCacheListeners = new Set<() => void>();
 
 function emitChatCache(): void {
   chatCacheEpoch += 1;
-  for (const listener of chatCacheListeners) listener();
+  const listeners = [...chatCacheListeners];
+  queueMicrotask(() => {
+    for (const listener of listeners) listener();
+  });
 }
 
 function subscribeChatCache(onStoreChange: () => void): () => void {
@@ -2531,6 +2534,32 @@ function subscribeChatCache(onStoreChange: () => void): () => void {
 
 function getChatCacheEpoch(): number {
   return chatCacheEpoch;
+}
+
+/** Seed the workspace transcript cache before ChatInterface mounts or remounts. */
+export function primeChatHistory(
+  workspaceId: string,
+  chatId: number,
+  page: AiChatHistoryPage,
+): void {
+  const cache = chatCacheForWorkspace(workspaceId);
+  let messages = cache.messages.get(chatId);
+  if (!messages) {
+    messages = [];
+    cache.messages.set(chatId, messages);
+  }
+  for (const [i, msg] of Array.from(page.messages ?? []).entries()) {
+    const sequence = typeof msg.sequence === "number" ? msg.sequence : i;
+    messages[sequence] = { ...msg, sequence, timestamp: asDate(msg.timestamp) };
+  }
+  if (page.compacted) {
+    const boundaries = cache.compacted.get(chatId) ?? [];
+    cache.compacted.set(chatId, [
+      ...boundaries.filter(({ to }) => to !== page.compacted!.to),
+      page.compacted,
+    ].toSorted((a, b) => a.to - b.to));
+  }
+  emitChatCache();
 }
 
 type ProvisionalToolCallState = {
@@ -2651,6 +2680,7 @@ function ChatInterface({
   const cacheRef = useRef<ChatCache>(chatCacheForWorkspace(workspaceId));
   cacheRef.current = chatCacheForWorkspace(workspaceId);
   const cacheEpoch = useSyncExternalStore(subscribeChatCache, getChatCacheEpoch, getChatCacheEpoch);
+  const [historyTick, setHistoryTick] = useState(0);
   const provisionalRef = useRef<Map<number, ProvisionalChatState>>(new Map());
   // Per-chat buffers of live (unmaterialized) change rows (see ChatLiveChangeRows), fed by
   // changeApplied, pruned by materialization watermarks and generation bumps.
@@ -2979,6 +3009,8 @@ function ChatInterface({
     : (cacheRef.current.messages.get(Number(selectedChatId))
         ?? cacheRef.current.messages.get(selectedChatId)
         ?? []).filter((msg) => msg !== undefined);
+  void cacheEpoch;
+  void historyTick;
   const isLoading = selectedChatId !== null
     && !cacheRef.current.messages.has(Number(selectedChatId))
     && !cacheRef.current.messages.has(selectedChatId);
@@ -2987,7 +3019,7 @@ function ChatInterface({
     return cacheRef.current.compacted.get(Number(selectedChatId))
       ?? cacheRef.current.compacted.get(selectedChatId)
       ?? [];
-  }, [selectedChatId, cacheEpoch]);
+  }, [selectedChatId, cacheEpoch, historyTick]);
   const messageStates = useMemo(
     // The oldest boundary is the one whose proposed changes no loaded message accounts for.
     () => computeMessageStates(currentMessages, currentCompactions[0]),
@@ -3829,7 +3861,9 @@ function ChatInterface({
   useEffect(() => {
     if (selectedChatId === null) return;
     const chatId = Number(selectedChatId);
-    if (cacheRef.current.messages.has(chatId)) {
+    const cache = chatCacheForWorkspace(workspaceId);
+    if (cache.messages.has(chatId)) {
+      setHistoryTick((n) => n + 1);
       return;
     }
 
@@ -3842,14 +3876,15 @@ function ChatInterface({
           const lastMsg = page.messages[page.messages.length - 1];
           const ts = asDate(lastMsg.timestamp);
           if (
-            !cacheRef.current.lastMessageTimestamp ||
-            ts > cacheRef.current.lastMessageTimestamp
+            !cache.lastMessageTimestamp ||
+            ts > cache.lastMessageTimestamp
           ) {
-            cacheRef.current.lastMessageTimestamp = ts;
+            cache.lastMessageTimestamp = ts;
           }
         }
 
         setProposedChangesVersion((prev) => prev + 1);
+        setHistoryTick((n) => n + 1);
         forceUpdate();
       } catch (err) {
         console.error("Failed to load chat history:", err);
@@ -3858,9 +3893,7 @@ function ChatInterface({
         }
       }
     })();
-    // LSP reports an error here, but tsc does not.
-    // The LSP error is due to bugs that need to be fixed in Cap'n Web.
-  }, [selectedChatId, overseer]);
+  }, [selectedChatId, overseer, workspaceId]);
 
   // Sequence of the oldest message loaded, or undefined once the thread's start is loaded. Paging
   // asks for what precedes it, so the control disappears exactly when there is nothing earlier.

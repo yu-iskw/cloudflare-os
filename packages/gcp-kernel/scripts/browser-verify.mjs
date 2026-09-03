@@ -284,7 +284,6 @@ async function main() {
       25_000,
     );
   } catch (err) {
-    console.error("browser console:", consoleLines.slice(-50).join("\n"));
     console.error("innerText:", await evaluate(send, `document.body.innerText.slice(0, 2500)`));
     console.error(
       "transcript:",

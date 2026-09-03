@@ -42,6 +42,7 @@ import WorkpiecePicker, {
   WORKPIECE_RAIL_EXPANDED_WIDTH,
 } from './WorkpiecePicker'
 import ChatInterface, {
+  primeChatHistory,
   type ActiveFileTarget,
   type ChatCodeChanges,
   type ChatLiveChangeRows,
@@ -425,6 +426,7 @@ export default function GadgetEditor() {
     },
   })
   const [userInfo, setUserInfo] = useState<AiChatAuthorInfo | null>(null)
+  const [chatHistoryGen, setChatHistoryGen] = useState(0)
 
   // The workspace-level flag covers reopen failures; the socket-level flag covers the outage
   // window itself, during which the dead stub stays published and no reopen is attempted yet.
@@ -590,6 +592,19 @@ export default function GadgetEditor() {
   // not caught up yet. As soon as merged code exists, dropping back to the chat
   // list should become possible.
   const effectiveSelectedChatId = selectedChatId ?? (pinInitialChatSelection ? 0 : null)
+
+  useEffect(() => {
+    if (!overseer || !id || effectiveSelectedChatId === null) return
+    const chatId = effectiveSelectedChatId
+    const workspaceId = id
+    const stub = overseer.stub
+    void stub.getChatHistory(chatId).then((page) => {
+      primeChatHistory(workspaceId, chatId, page)
+      setChatHistoryGen((n) => n + 1)
+    }).catch((err) => {
+      console.error('Failed to load chat history:', err)
+    })
+  }, [overseer, id, effectiveSelectedChatId])
 
   // ── workpiece selection ──────────────────────────────────────────────────────
   const allGadgets = useMemo(() => {
@@ -1579,7 +1594,7 @@ export default function GadgetEditor() {
             <div className="flex-1 min-h-0 relative">
               <div className={layoutModeReady ? 'h-full' : 'h-full invisible'}>
                 <ChatInterface
-                  key={id}
+                  key={`${id}:${chatHistoryGen}`}
                   workspaceId={id}
                   overseer={overseer.stub}
                   selectedChatId={effectiveSelectedChatId}
