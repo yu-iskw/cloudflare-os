@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { RpcStub, RpcTarget } from 'capnweb'
+import { RpcStub } from 'capnweb'
 import type {
   AuthenticatedApi,
   GadgetMetadata,
   ObserverAccountChoice,
   ObserverBindingNeed,
-  ObserverConfigCallback,
   Overseer,
 } from '@gadgets/workshop-shared/api'
 import { reportIssue } from './errorReporting'
@@ -59,17 +58,14 @@ export function useWorkspaceOpen({
   useEffect(() => {
     let overseerStub: RpcStub<Overseer> | null = null
     let metadataSubscription: RpcStub<{}> | null = null
-    let configureObservers: RpcStub<ObserverConfigCallback> | null = null
     let cancelled = false
     const hadOpenWorkspace = id !== undefined && openWorkspaceIdRef.current === id
 
     const disposeAttempt = () => {
       metadataSubscription?.[Symbol.dispose]()
       overseerStub?.[Symbol.dispose]()
-      configureObservers?.[Symbol.dispose]()
       metadataSubscription = null
       overseerStub = null
-      configureObservers = null
     }
 
     const showTerminalError = (nextError: WorkspaceLoadError) => {
@@ -93,30 +89,12 @@ export function useWorkspaceOpen({
         const shareKey = hash.startsWith('#share=') ? hash.slice('#share='.length) : undefined
         if (shareKey) callbacksRef.current.onShareKeyConsumed()
 
-        const configureObserversTarget = new (class extends RpcTarget implements ObserverConfigCallback {
-          configure(needs: ObserverBindingNeed[]): Promise<ObserverAccountChoice[]> {
-            if (cancelled) return Promise.reject(new Error('Cancelled'))
-            return new Promise<ObserverAccountChoice[]>((resolve, reject) => {
-              pendingObserverRejectRef.current = reject
-              setObserverConfig({
-                needs,
-                resolve: choices => {
-                  pendingObserverRejectRef.current = null
-                  setObserverConfig(null)
-                  resolve(choices)
-                },
-                reject: observerError => {
-                  pendingObserverRejectRef.current = null
-                  setObserverConfig(null)
-                  reject(observerError)
-                },
-              })
-            })
-          }
-        })()
-        configureObservers = new RpcStub(configureObserversTarget)
-
-        overseerStub = authenticatedApi.openGadget(id, shareKey, configureObservers)
+        // Do not pass a client ObserverConfigCallback stub: Cap'n Web exports it
+        // on the openGadget() call and later reads (listChats, getChatHistory)
+        // never complete in Chrome. Share keys are strings and are safe.
+        overseerStub = shareKey
+          ? authenticatedApi.openGadget(id, shareKey)
+          : authenticatedApi.openGadget(id)
         linkActionLog(overseerStub, id)
         setOverseer({ stub: overseerStub })
 
