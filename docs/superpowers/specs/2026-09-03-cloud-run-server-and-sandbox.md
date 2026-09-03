@@ -105,8 +105,8 @@ Cloud Run Service  (the server, gen2, --sandbox-launcher,
    └─ optional sandbox run --detach: experimental gadget processes
                     (host must proxy; no per-sandbox URL)
 
-Spanner / Memorystore / Cloud Tasks / Cloud Storage / Agent Gateway
-   as in the parent plan.
+Cloud SQL / Memorystore / Cloud Tasks / Cloud Storage / Agent Gateway
+   as in the parent plan (not Spanner for v1).
 
 GKE Agent Sandbox
    only if gadgets need independently addressable long-lived HTTP.

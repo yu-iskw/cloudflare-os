@@ -5,6 +5,7 @@ Status: research only — no implementation
 
 This is the design companion to `docs/plans/2026-09-03-001-architecture-gcp-os-plan.md`.
 Cloud Run depth: `docs/superpowers/specs/2026-09-03-cloud-run-server-and-sandbox.md`.
+Ledger depth: `docs/superpowers/specs/2026-09-03-alloydb-spanner-firebase.md`.
 
 ## Goal
 
@@ -29,9 +30,10 @@ Cloud Run is not one primitive. The **service** is the request-driven server. **
                       |
          +------------+------------------+
          |            |                  |
-   sandbox do    Spanner ledger    Agent Gateway
+   sandbox do    Cloud SQL PG      Agent Gateway
    executeCode   users/workspaces  Model Armor,
    deny-egress   capabilities      Model Garden
+                 GCS git blobs
          |
    optional later:
    GKE Agent Sandbox  (addressable gadget HTTP)
@@ -42,11 +44,12 @@ Cloud Run is not one primitive. The **service** is the request-driven server. **
 | --- | --- | --- |
 | Trusted server | Cloud Run **Service** | Router, SPA, kernel RPC, Gatekeeper OAuth |
 | Untrusted snippets | Cloud Run **nested sandboxes** (`sandbox do`) | Code Mode / `executeCode` |
-| System of record | Spanner (Firestore OK for a first slice) | Users, workspaces, chat, git, capability records |
+| System of record | Cloud SQL PostgreSQL | Users, workspaces, chat, git **pointers**, capability records |
+| Git / blueprint bytes | Cloud Storage | Loose git objects, archives, screenshots |
 | Live fan-out | Memorystore | Collaboration after replica failover |
+| Human login | Identity Platform + IAP | Not a data plane; agents stay SPIFFE |
 | Addressable gadgets (optional) | GKE Agent Sandbox | Long-lived inbound HTTP if Facets demand it |
 | Wakeups | Cloud Tasks / Cloud Scheduler | Durable Object `alarm()` analog |
-| Blobs | Cloud Storage | Blueprints, screenshots |
 | Governance | Agent Platform | Models, Agent Identity, Gateway, Armor |
 
 ## Scored options
@@ -75,8 +78,8 @@ The service still cannot be a unique workspace actor. The sandbox still cannot b
 ## Open forks before implementation
 
 1. Gadget host: GKE Agent Sandbox vs Cloud Run `sandbox run --detach` plus host mux vs in-process isolate pool.
-2. Overseer uniqueness: Spanner lease in front of a Service vs a GKE Sandbox identity.
-3. Chat loop: custom Code Mode on `sandbox do` vs Agent Runtime with Code Mode as a tool.
+
+Settled this revision: Overseer uniqueness on the Cloud Run path is a **Postgres lease**; `executeCode` is `sandbox do`; v1 ledger is **Cloud SQL PostgreSQL** (not Spanner, not Firestore). AlloyDB is a same-protocol upgrade. Spanner only if multi-region strong writes become real. Identity Platform for humans; Firebase SQL Connect is not the kernel API.
 
 ## Not in this change
 
