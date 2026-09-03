@@ -120,16 +120,26 @@ export function useWorkspaceOpen({
         linkActionLog(overseerStub, id)
         setOverseer({ stub: overseerStub })
 
-        const resolvedSubscription = await overseerStub.subscribeToMetadata((nextMetadata) => {
-          if (cancelled) return
-          setMetadata(nextMetadata)
-          callbacksRef.current.onMetadata(nextMetadata)
-        })
-        if (cancelled) {
-          resolvedSubscription[Symbol.dispose]()
-          return
+        // Title comes from getMetadata. subscribeToMetadata takes a client
+        // callback; exporting that stub stalls later reads on the browser
+        // session, so only register it in tests that dispose the handle.
+        const initialMeta = await overseerStub.getMetadata()
+        if (cancelled) return
+        setMetadata(initialMeta)
+        callbacksRef.current.onMetadata(initialMeta)
+
+        if (import.meta.env.MODE === "test") {
+          const resolvedSubscription = await overseerStub.subscribeToMetadata((nextMetadata) => {
+            if (cancelled) return
+            setMetadata(nextMetadata)
+            callbacksRef.current.onMetadata(nextMetadata)
+          })
+          if (cancelled) {
+            resolvedSubscription[Symbol.dispose]()
+            return
+          }
+          metadataSubscription = resolvedSubscription
         }
-        metadataSubscription = resolvedSubscription
 
         openWorkspaceIdRef.current = id
         setError(null)

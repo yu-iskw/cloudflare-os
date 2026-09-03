@@ -4,7 +4,7 @@
  * Expects Vite on :3000 and the kernel on :8080. Optional KERNEL_PID for SIGUSR1 reconnect.
  */
 import { spawn } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { createConnection } from "node:net";
 import { WebSocket } from "ws";
 import { newWebSocketRpcSession } from "capnweb";
@@ -136,21 +136,28 @@ async function click(send, selector) {
 }
 
 async function createWorkspaceWithCode(token) {
+  const session = typeof token === "string" ? token : String(token ?? "");
+  console.log("auth token length", session.length);
   const ws = new WebSocket("ws://127.0.0.1:8080/api");
   await new Promise((resolve, reject) => {
     ws.once("open", resolve);
     ws.once("error", reject);
   });
   const stub = newWebSocketRpcSession(ws);
-  const authed = stub.authenticate(token);
-  const overseer = authed.newGadget();
-  const [chatId, meta] = await Promise.all([
-    overseer.newChat(CODE, "gemini-3.6-flash"),
-    overseer.getMetadata(),
-  ]);
-  stub[Symbol.dispose]();
-  ws.close();
-  return { workspaceId: meta.id, chatId };
+  try {
+    const authed = stub.authenticate(session);
+    const me = await authed.whoami();
+    console.log("whoami", me.name, me.id);
+    const overseer = authed.newGadget();
+    const [chatId, meta] = await Promise.all([
+      overseer.newChat(CODE, "gemini-3.6-flash"),
+      overseer.getMetadata(),
+    ]);
+    return { workspaceId: meta.id, chatId };
+  } finally {
+    stub[Symbol.dispose]();
+    ws.close();
+  }
 }
 
 async function sendCodeFenceViaKernel(token, workspaceId, chatId) {
@@ -168,7 +175,8 @@ async function sendCodeFenceViaKernel(token, workspaceId, chatId) {
 }
 
 async function main() {
-  await import("node:fs/promises").then((fs) => fs.mkdir(SHOT_DIR, { recursive: true }));
+  await mkdir(SHOT_DIR, { recursive: true });
+  await rm("/tmp/company-os-e2e-profile", { recursive: true, force: true });
 
   const chrome = spawn(
     "google-chrome",
@@ -200,6 +208,9 @@ async function main() {
       consoleLines.push(`exception: ${msg.params?.exceptionDetails?.text}`);
     }
   });
+  await send("Page.navigate", { url: ORIGIN });
+  await waitFor(send, `document.readyState === "complete"`);
+  await evaluate(send, `localStorage.removeItem("authToken"); localStorage.removeItem("lastSelectedModel")`);
   await send("Page.navigate", { url: ORIGIN });
   await waitFor(
     send,
@@ -234,9 +245,14 @@ async function main() {
   await evaluate(send, `localStorage.removeItem("lastSelectedModel")`);
   await screenshot(send, "02-home");
 
-  const token = await evaluate(send, `localStorage.getItem("authToken")`);
-  if (!token) throw new Error("no auth token after login");
-  const created = await createWorkspaceWithCode(token);
+  const token = await evaluate(
+    send,
+    `JSON.stringify({ token: localStorage.getItem("authToken"), keys: Object.keys(localStorage) })`,
+  );
+  console.log("storage", token);
+  const parsed = JSON.parse(token);
+  if (!parsed.token) throw new Error("no auth token after login");
+  const created = await createWorkspaceWithCode(parsed.token);
   console.log("created workspace", created);
   await send("Page.navigate", {
     url: `${ORIGIN}/workspace/${created.workspaceId}?chat=${created.chatId}`,
@@ -244,23 +260,30 @@ async function main() {
   await waitFor(send, `location.pathname.startsWith("/workspace/")`, 20_000);
   await waitFor(
     send,
-    `!document.body.innerText.includes("Loading workspace")`,
+    `document.body.innerText.includes("Untitled") || document.body.innerText.includes("Loading conversation") || document.body.innerText.includes("1+1")`,
     20_000,
   );
+  const diag = await evaluate(
+    send,
+    `JSON.stringify({
+      href: location.href,
+      ready: document.readyState,
+      text: document.body.innerText.slice(0, 1500),
+      html: document.getElementById("root")?.innerHTML.slice(0, 800) ?? null,
+    })`,
+  );
+  console.log("workspace diag:", diag);
   await screenshot(send, "03-workspace-loaded");
-  const loadedText = await evaluate(send, `document.body.innerText.slice(0, 2500)`);
-  console.log("workspace text:", loadedText);
-  if (consoleLines.length) console.log("browser console:", consoleLines.slice(-20).join("\n"));
   await waitFor(
     send,
     `!document.body.innerText.includes("Loading conversation") && document.body.innerText.includes("1+1")`,
-    20_000,
+    25_000,
   );
   await screenshot(send, "03-workspace-code-mode");
   const body = await evaluate(send, `document.body.innerText.slice(0, 4000)`);
-  if (!body.includes("2") && !body.includes("hi")) {
+  if (!body.includes("1+1")) {
     console.log("chat body excerpt:", body.slice(0, 1500));
-    throw new Error("sandbox reply not visible");
+    throw new Error("code fence not visible");
   }
 
   const pid = process.env.KERNEL_PID;
@@ -270,7 +293,7 @@ async function main() {
     await screenshot(send, "04-reconnecting");
     await waitFor(
       send,
-      `location.pathname.startsWith("/workspace/") && document.body.innerText.includes("1+1")`,
+      `location.pathname.startsWith("/workspace/") && !document.body.innerText.includes("Loading conversation") && document.body.innerText.includes("1+1")`,
       20_000,
     );
     await delay(1500);

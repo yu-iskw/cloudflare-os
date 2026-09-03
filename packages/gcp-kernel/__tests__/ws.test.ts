@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { fileURLToPath } from "node:url";
 import { WebSocket } from "ws";
 import { RpcTarget, newWebSocketRpcSession } from "capnweb";
-import type { GadgetMetadata, PublicApi } from "@gadgets/workshop-shared/api";
+import type { PublicApi } from "@gadgets/workshop-shared/api";
 import { createKernelServer } from "../src/server.js";
 import type { Server } from "node:http";
 
@@ -97,9 +97,7 @@ describe("Cap'n Web /api", () => {
     await expect.poll(() => accountsReady).toBe(true);
 
     const overseer = authed.newGadget();
-    const meta = await new Promise<GadgetMetadata>((resolve) => {
-      void overseer.subscribeToMetadata((next) => resolve(next));
-    });
+    const meta = await overseer.getMetadata();
     expect(meta.title).toBe("Untitled Workspace");
 
     const chats = await overseer.listChats();
@@ -113,7 +111,7 @@ describe("Cap'n Web /api", () => {
     ws.close();
   });
 
-  it("pipelines listChats after subscribeToChat the way the SPA does", async () => {
+  it("loads chat history without exporting a client-stub subscriber", async () => {
     const started = startKernel();
     const port = await listen(started.server);
     const ws = new WebSocket(`ws://127.0.0.1:${port}/api`);
@@ -133,25 +131,8 @@ describe("Cap'n Web /api", () => {
       else process.env.SANDBOX_BIN = previous;
     }
 
-    let generation = 0;
-    class ChatSub extends RpcTarget {
-      streamGeneration(value: number) {
-        generation = value;
-      }
-      metadata(): void {}
-      deleted(): void {}
-      message(): void {}
-      changeApplied(): void {}
-      stream(): void {}
-    }
-    class ActionsSub extends RpcTarget {
-      ready(): void {}
-      upsert(): void {}
-    }
-
-    // Same order as ChatInterface: do not await subscribe, then read.
-    const subscription = overseer.subscribeToChat(new ChatSub() as never);
-    const actionsSub = overseer.subscribeToActions(new ActionsSub() as never);
+    // Same order as the GCP SPA: list/history with no client-stub subscribe.
+    // Exporting an RpcTarget subscriber stalls later reads in Chrome.
     const [chats, models, history, actions] = await withTimeout(
       Promise.all([
         overseer.listChats(),
@@ -160,7 +141,7 @@ describe("Cap'n Web /api", () => {
         overseer.listActions({ filter: "pending" } as never),
       ]),
       5_000,
-      "SPA pipelined reads after subscribeToChat",
+      "SPA list/history reads without a chat subscriber",
     );
     expect(chats.some((c) => c.id === chatId)).toBe(true);
     for (const chat of chats) {
@@ -174,10 +155,7 @@ describe("Cap'n Web /api", () => {
     expect(bodies.some((b) => b.includes("1+1"))).toBe(true);
     expect(bodies.some((b) => b.includes("2"))).toBe(true);
     expect(actions.entries).toEqual([]);
-    await expect.poll(() => generation).toBe(1);
 
-    subscription[Symbol.dispose]();
-    actionsSub[Symbol.dispose]();
     stub[Symbol.dispose]();
     ws.close();
   });

@@ -78,6 +78,7 @@ describe('useWorkspaceOpen', () => {
     const pendingSubscription = deferred<RpcStub<{}>>()
     const overseerDispose = vi.fn<() => void>()
     const overseer = disposableStub({
+      getMetadata: async () => METADATA,
       subscribeToMetadata: vi.fn<() => Promise<RpcStub<{}>>>(() => pendingSubscription.promise),
     }, overseerDispose) as unknown as RpcStub<Overseer>
     const subscriptionDispose = vi.fn<() => void>()
@@ -113,6 +114,7 @@ describe('useWorkspaceOpen', () => {
     document.title = 'outside'
     const firstSubscriptionDispose = vi.fn<() => void>()
     const firstOverseer = disposableStub({
+      getMetadata: async () => METADATA,
       subscribeToMetadata: vi.fn<
         (callback: (metadata: GadgetMetadata) => void) => Promise<RpcStub<{}>>
       >(async callback => {
@@ -122,6 +124,9 @@ describe('useWorkspaceOpen', () => {
     }) as unknown as RpcStub<Overseer>
     const deniedOverseerDispose = vi.fn<() => void>()
     const deniedOverseer = disposableStub({
+      getMetadata: async () => {
+        throw createOpenGadgetError(OPEN_GADGET_ERROR_CODES.workspaceAccessDenied)
+      },
       subscribeToMetadata: vi.fn<() => Promise<RpcStub<{}>>>(async () => {
         throw createOpenGadgetError(OPEN_GADGET_ERROR_CODES.workspaceAccessDenied)
       }),

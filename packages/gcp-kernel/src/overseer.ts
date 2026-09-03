@@ -158,54 +158,35 @@ export class OverseerImpl extends RpcTarget {
   }
 
   /**
-   * Push current metadata immediately so the SPA can leave the loading spinner.
-   * The callback is a client stub; invoke without awaiting (promise pipelining).
+   * Disposable handle only. Invoking the client callback (even without `await`)
+   * stalls later reads on the same browser session. The SPA loads title via
+   * `getMetadata()`.
    */
   async subscribeToMetadata(
-    callback: (metadata: GadgetMetadata) => void,
+    _callback: (metadata: GadgetMetadata) => void,
   ): Promise<RpcStub<{}>> {
-    callback(await this.getMetadata());
     return dummySub();
   }
 
-  async subscribeToPresence(subscriber: { init(participants: unknown[]): void }): Promise<RpcStub<{}>> {
-    // Do not await client stubs inside the server method: the SPA pipelines
-    // listChats() on the same session and a round-trip here stalls that read.
-    subscriber.init([]);
+  async subscribeToPresence(_subscriber: { init(participants: unknown[]): void }): Promise<RpcStub<{}>> {
     return dummySub();
   }
 
-  async subscribeToWorkpieces(subscriber: WorkpiecesSubscriber): Promise<RpcStub<{}>> {
-    subscriber.ready();
+  async subscribeToWorkpieces(_subscriber: WorkpiecesSubscriber): Promise<RpcStub<{}>> {
     return dummySub();
   }
 
-  async subscribeToActions(subscriber: { ready?(): void }): Promise<RpcStub<{}>> {
-    subscriber.ready?.();
+  async subscribeToActions(_subscriber: { ready?(): void }): Promise<RpcStub<{}>> {
     return dummySub();
   }
 
   /**
-   * Register the chat subscriber and return immediately. Calling `streamGeneration` /
-   * `metadata` / `message` *inside* this method deadlocks Cap'n Web: the SPA pipelines
-   * `listChats()` on the same session and will not process those client RPCs until the
-   * subscribe call returns. Replay of history is `listChats` + `getChatHistory`.
-   *
-   * Params stubs are disposed when the call returns; `.dup()` keeps the subscriber for
-   * live emits and a later `streamGeneration`.
+   * Return a disposable handle only. Invoking the client subscriber here (even via `.dup()` +
+   * `setImmediate`) stalls later reads on the same browser session (`getChatHistory` never
+   * finishes, the transcript spinner never clears). History is `listChats` + `getChatHistory`.
    */
-  subscribeToChat(subscriber: AiChatSubscriber): RpcStub<{}> {
-    const retained = (subscriber as unknown as RpcStub<AiChatSubscriber>).dup();
-    this.#chatSubscribers.add(retained);
-    const handle = new ChatSubscription(retained, this.#chatSubscribers);
-    setImmediate(() => {
-      try {
-        retained.streamGeneration(1);
-      } catch {
-        handle[Symbol.dispose]();
-      }
-    });
-    return handle as unknown as RpcStub<{}>;
+  subscribeToChat(_subscriber: AiChatSubscriber): RpcStub<{}> {
+    return dummySub();
   }
 
   async subscribeToConsoleLogs(): Promise<RpcStub<{}>> {
@@ -268,25 +249,6 @@ export class OverseerImpl extends RpcTarget {
 function extractCodeFence(text: string): string | undefined {
   const match = /```(?:javascript|js)?\n([\s\S]*?)```/.exec(text);
   return match?.[1];
-}
-
-/** Holds a `.dup()` of the SPA chat subscriber until the client disposes the subscription. */
-class ChatSubscription extends RpcTarget {
-  #alive = true;
-
-  constructor(
-    private readonly subscriber: RpcStub<AiChatSubscriber>,
-    private readonly subscribers: Set<AiChatSubscriber>,
-  ) {
-    super();
-  }
-
-  [Symbol.dispose](): void {
-    if (!this.#alive) return;
-    this.#alive = false;
-    this.subscribers.delete(this.subscriber);
-    this.subscriber[Symbol.dispose]();
-  }
 }
 
 export type { Overseer };

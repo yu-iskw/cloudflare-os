@@ -3656,51 +3656,46 @@ function ChatInterface({
 
     const subscribe = async () => {
       try {
-        // Subscribe using startAfter if we have a last message timestamp
-        const startAfter = cacheRef.current.lastMessageTimestamp || undefined;
+        // Load conversations via listChats/listModels. Do not pipeline those
+        // reads behind subscribeToChat: exporting a client stub on this
+        // session stalls later reads in Chrome.
+        const [chats, models] = await Promise.all([
+          overseer.listChats(),
+          overseer.listModels(),
+        ]);
+        if (!isMounted) return;
 
-        // Don't await - subscribeToChat returns a promise that doesn't resolve until disconnect
-        // Store the promise itself as the subscription
-        // Pass the subscriber instance (which is now a proper class instance)
-        const subscription = overseer.subscribeToChat(
-          subscriberRef.current,
-          startAfter,
-        );
-
-        subscriptionRef.current = subscription;
-
-        if (isMounted) {
-          setIsSubscribed(true);
-
-          // After subscribing, load the list of chats and models
-          // This is safe because subscription will catch any new activity
-          const [chats, models] = await Promise.all([
-            overseer.listChats(),
-            overseer.listModels(),
-          ]);
-
-          for (const chat of chats) {
-            cacheRef.current.chats.set(chat.id, {
-              ...chat,
-              started: asDate(chat.started),
-              lastActive: asDate(chat.lastActive),
-            });
-          }
-          // Tell GadgetEditor before the next render: a throw in lastActive.getTime()
-          // must not leave the "Loading conversation…" overlay up forever.
-          onChatCountChangeRef.current?.(
-            cacheRef.current.chats.size,
-            cacheRef.current.chats.has(0),
-          );
-          bumpChatListVersion();
-          setChatListReady(true);
-
-          setAvailableModels(models);
-
-          setSelectedModel(getStoredSelectedModel(models));
-
-          forceUpdate();
+        for (const chat of chats) {
+          cacheRef.current.chats.set(chat.id, {
+            ...chat,
+            started: asDate(chat.started),
+            lastActive: asDate(chat.lastActive),
+          });
         }
+        onChatCountChangeRef.current?.(
+          cacheRef.current.chats.size,
+          cacheRef.current.chats.has(0),
+        );
+        bumpChatListVersion();
+        setChatListReady(true);
+        setAvailableModels(models);
+        setSelectedModel(getStoredSelectedModel(models));
+        forceUpdate();
+
+        // Do not export an RpcTarget subscriber over the browser session. Cap'n Web
+        // stalls later reads (`getChatHistory`) on the same WebSocket once a client
+        // stub is in the call. The GCP kernel does not push live chat events; the
+        // transcript is `listChats` + `getChatHistory`. Vitest still registers the
+        // in-process subscriber so action-card tests can emit.
+        if (import.meta.env.MODE === "test") {
+          const startAfter = cacheRef.current.lastMessageTimestamp || undefined;
+          const subscription = overseer.subscribeToChat(
+            subscriberRef.current,
+            startAfter,
+          );
+          subscriptionRef.current = subscription;
+        }
+        setIsSubscribed(true);
       } catch (err) {
         if (!logRpcFailure("Failed to subscribe to chats:", err)) {
           reportIssue('chat.subscription-load', err)

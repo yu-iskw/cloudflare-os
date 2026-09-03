@@ -115,6 +115,18 @@ export function useAuth(publicApi: RpcStub<PublicApi>) {
       isLoading: false,
       error: null
     })
+    // Pipelining lets the shell render immediately; a MemoryLedger restart (or expired
+    // cookie) still has to drop the doomed stub or Home looks signed-in with no session.
+    authenticatedApi.whoami().catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err)
+      if (!message.includes("invalid session")) return
+      localStorage.removeItem("authToken")
+      setAuthState(prev => {
+        if (prev.authenticatedApi !== authenticatedApi) return prev
+        prev.authenticatedApi[Symbol.dispose]()
+        return { token: null, authenticatedApi: null, isLoading: false, error: null }
+      })
+    })
   }
 
   const login = (token: string) => {

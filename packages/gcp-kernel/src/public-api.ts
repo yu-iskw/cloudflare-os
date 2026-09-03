@@ -54,7 +54,8 @@ export class PublicApiImpl extends RpcTarget {
   }
 
   async authenticate(token: string): Promise<AuthenticatedApi> {
-    const userId = this.ledger.usersByToken.get(token);
+    const key = typeof token === "string" ? token : String(token);
+    const userId = this.ledger.usersByToken.get(key);
     if (!userId) throw new Error("invalid session");
     return new AuthenticatedApiImpl(this.ledger, userId, this.replicaId) as unknown as AuthenticatedApi;
   }
