@@ -17,6 +17,24 @@ import { GitStore } from "@gadgets/gcp-git";
 import { sandboxDo } from "@gadgets/gcp-sandbox";
 import { completeThroughGateway, defaultArmorFloor } from "@gadgets/gcp-agent";
 import { dummySub } from "./rpc-stubs.js";
+import type {
+  ActionHistoryPage,
+  AiChatAuthorInfo,
+  AiChatHistoryPage,
+  AiChatMessage,
+  AiChatMetadata,
+  AiChatSubscriber,
+  BoundHookInfo,
+  GadgetMetadata,
+  Overseer,
+  SlashCommandChoice,
+  WorkpiecesSubscriber,
+} from "@gadgets/workshop-shared/api";
+import { MemoryLedger, type ChatMessageRow } from "@gadgets/gcp-ledger";
+import { GitStore } from "@gadgets/gcp-git";
+import { sandboxDo } from "@gadgets/gcp-sandbox";
+import { completeThroughGateway, defaultArmorFloor } from "@gadgets/gcp-agent";
+import { dummySub } from "./rpc-stubs.js";
 
 const DEFAULT_MODEL: AiChatAuthorInfo = {
   type: "agent",
@@ -190,18 +208,22 @@ export class OverseerImpl extends RpcTarget {
    * `metadata` / `message` *inside* this method deadlocks Cap'n Web: the SPA pipelines
    * `listChats()` on the same session and will not process those client RPCs until the
    * subscribe call returns. Replay of history is `listChats` + `getChatHistory`.
-   * `streamGeneration` is delivered on the next turn so reconnect detection still works.
+   *
+   * Params stubs are disposed when the call returns; `.dup()` keeps the subscriber for
+   * live emits and a later `streamGeneration`.
    */
   subscribeToChat(subscriber: AiChatSubscriber): RpcStub<{}> {
-    this.#chatSubscribers.add(subscriber);
+    const retained = (subscriber as unknown as RpcStub<AiChatSubscriber>).dup();
+    this.#chatSubscribers.add(retained);
+    const handle = new ChatSubscription(retained, this.#chatSubscribers);
     setImmediate(() => {
       try {
-        subscriber.streamGeneration(1);
+        retained.streamGeneration(1);
       } catch {
-        this.#chatSubscribers.delete(subscriber);
+        handle[Symbol.dispose]();
       }
     });
-    return dummySub();
+    return handle as unknown as RpcStub<{}>;
   }
 
   async subscribeToConsoleLogs(): Promise<RpcStub<{}>> {
@@ -264,6 +286,25 @@ export class OverseerImpl extends RpcTarget {
 function extractCodeFence(text: string): string | undefined {
   const match = /```(?:javascript|js)?\n([\s\S]*?)```/.exec(text);
   return match?.[1];
+}
+
+/** Holds a `.dup()` of the SPA chat subscriber until the client disposes the subscription. */
+class ChatSubscription extends RpcTarget {
+  #alive = true;
+
+  constructor(
+    private readonly subscriber: RpcStub<AiChatSubscriber>,
+    private readonly subscribers: Set<AiChatSubscriber>,
+  ) {
+    super();
+  }
+
+  [Symbol.dispose](): void {
+    if (!this.#alive) return;
+    this.#alive = false;
+    this.subscribers.delete(this.subscriber);
+    this.subscriber[Symbol.dispose]();
+  }
 }
 
 export type { Overseer };

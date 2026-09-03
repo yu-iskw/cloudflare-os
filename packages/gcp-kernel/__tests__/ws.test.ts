@@ -8,19 +8,35 @@ import type { Server } from "node:http";
 
 describe("Cap'n Web /api", () => {
   let server: Server | undefined;
+  let dropApiSockets: (() => void) | undefined;
 
   afterEach(async () => {
+    dropApiSockets?.();
+    dropApiSockets = undefined;
     await new Promise<void>((resolve) => {
-      server?.close(() => resolve());
-      if (!server) resolve();
+      if (!server) {
+        resolve();
+        return;
+      }
+      const timer = setTimeout(() => resolve(), 1000);
+      server.close(() => {
+        clearTimeout(timer);
+        resolve();
+      });
     });
     server = undefined;
   });
 
-  it("pings over a WebSocket and disposes the stub", async () => {
+  function startKernel() {
     const started = createKernelServer();
     server = started.server;
-    const port = await listen(server);
+    dropApiSockets = started.dropApiSockets;
+    return started;
+  }
+
+  it("pings over a WebSocket and disposes the stub", async () => {
+    const started = startKernel();
+    const port = await listen(started.server);
     const ws = new WebSocket(`ws://127.0.0.1:${port}/api`);
     await new Promise<void>((resolve, reject) => {
       ws.once("open", () => resolve());
@@ -35,9 +51,8 @@ describe("Cap'n Web /api", () => {
   });
 
   it("creates an account, authenticates, and opens a workspace", async () => {
-    const started = createKernelServer();
-    server = started.server;
-    const port = await listen(server);
+    const started = startKernel();
+    const port = await listen(started.server);
     const ws = new WebSocket(`ws://127.0.0.1:${port}/api`);
     await new Promise<void>((resolve, reject) => {
       ws.once("open", () => resolve());
@@ -58,9 +73,8 @@ describe("Cap'n Web /api", () => {
   });
 
   it("skips onboarding and delivers metadata plus connected-accounts ready", async () => {
-    const started = createKernelServer();
-    server = started.server;
-    const port = await listen(server);
+    const started = startKernel();
+    const port = await listen(started.server);
     const ws = new WebSocket(`ws://127.0.0.1:${port}/api`);
     await opened(ws);
     const stub = newWebSocketRpcSession<PublicApi>(ws as never);
@@ -100,9 +114,8 @@ describe("Cap'n Web /api", () => {
   });
 
   it("pipelines listChats after subscribeToChat the way the SPA does", async () => {
-    const started = createKernelServer();
-    server = started.server;
-    const port = await listen(server);
+    const started = startKernel();
+    const port = await listen(started.server);
     const ws = new WebSocket(`ws://127.0.0.1:${port}/api`);
     await opened(ws);
     const stub = newWebSocketRpcSession<PublicApi>(ws as never);
@@ -170,9 +183,8 @@ describe("Cap'n Web /api", () => {
   });
 
   it("accepts a second WebSocket after the first is disposed", async () => {
-    const started = createKernelServer();
-    server = started.server;
-    const port = await listen(server);
+    const started = startKernel();
+    const port = await listen(started.server);
 
     const first = new WebSocket(`ws://127.0.0.1:${port}/api`);
     await opened(first);
@@ -190,9 +202,8 @@ describe("Cap'n Web /api", () => {
   });
 
   it("dropApiSockets closes the live socket so a new one can connect", async () => {
-    const started = createKernelServer();
-    server = started.server;
-    const port = await listen(server);
+    const started = startKernel();
+    const port = await listen(started.server);
 
     const first = new WebSocket(`ws://127.0.0.1:${port}/api`);
     await opened(first);
