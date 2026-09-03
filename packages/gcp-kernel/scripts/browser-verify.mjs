@@ -205,7 +205,10 @@ async function main() {
       consoleLines.push(`${msg.params?.type}: ${text}`);
     }
     if (msg.method === "Runtime.exceptionThrown") {
-      consoleLines.push(`exception: ${msg.params?.exceptionDetails?.text}`);
+      const ex = msg.params?.exceptionDetails ?? {};
+      consoleLines.push(
+        `exception: ${ex.text ?? ""} ${ex.exception?.description ?? ex.exception?.value ?? ""} ${ex.url ?? ""}:${ex.lineNumber ?? ""}`,
+      );
     }
   });
   await send("Page.navigate", { url: ORIGIN });
@@ -274,11 +277,25 @@ async function main() {
   );
   console.log("workspace diag:", diag);
   await screenshot(send, "03-workspace-loaded");
-  await waitFor(
-    send,
-    `!document.body.innerText.includes("Loading conversation") && document.body.innerText.includes("1+1")`,
-    25_000,
-  );
+  try {
+    await waitFor(
+      send,
+      `!document.body.innerText.includes("Loading conversation") && document.body.innerText.includes("1+1")`,
+      25_000,
+    );
+  } catch (err) {
+    console.error("browser console:", consoleLines.slice(-50).join("\n"));
+    console.error("innerText:", await evaluate(send, `document.body.innerText.slice(0, 2500)`));
+    console.error(
+      "transcript html:",
+      await evaluate(
+        send,
+        `document.querySelector('[data-testid="chat-transcript"]')?.innerHTML.slice(0, 2000) ?? "NO_TRANSCRIPT"`,
+      ),
+    );
+    await screenshot(send, "03-workspace-timeout");
+    throw err;
+  }
   await screenshot(send, "03-workspace-code-mode");
   const body = await evaluate(send, `document.body.innerText.slice(0, 4000)`);
   if (!body.includes("1+1")) {

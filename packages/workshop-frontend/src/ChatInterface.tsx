@@ -9,6 +9,7 @@ import {
   useRef,
   useMemo,
   useCallback,
+  useSyncExternalStore,
   type ComponentPropsWithoutRef,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
@@ -2488,6 +2489,50 @@ interface ChatCache {
   lastMessageTimestamp: Date | null;
 }
 
+function emptyChatCache(): ChatCache {
+  return {
+    chats: new Map(),
+    messages: new Map(),
+    compacted: new Map(),
+    actionMessages: new Map(),
+    lastMessageTimestamp: null,
+  };
+}
+
+/** Survives remounts (Strict Mode) and overseer stub swaps (reconnect) for a workspace. */
+const chatCachesByWorkspace = new Map<string, ChatCache>();
+
+function chatCacheForWorkspace(workspaceId: string): ChatCache {
+  let cache = chatCachesByWorkspace.get(workspaceId);
+  if (!cache) {
+    cache = emptyChatCache();
+    chatCachesByWorkspace.set(workspaceId, cache);
+  }
+  return cache;
+}
+
+// History often lands on a Strict Mode fiber that has already unmounted. The
+// module cache still holds the page; this store is what makes the live fiber
+// re-read it.
+let chatCacheEpoch = 0;
+const chatCacheListeners = new Set<() => void>();
+
+function emitChatCache(): void {
+  chatCacheEpoch += 1;
+  for (const listener of chatCacheListeners) listener();
+}
+
+function subscribeChatCache(onStoreChange: () => void): () => void {
+  chatCacheListeners.add(onStoreChange);
+  return () => {
+    chatCacheListeners.delete(onStoreChange);
+  };
+}
+
+function getChatCacheEpoch(): number {
+  return chatCacheEpoch;
+}
+
 type ProvisionalToolCallState = {
   toolCallId: string;
   toolName: AiToolCall["toolName"] | null;
@@ -2603,13 +2648,9 @@ function ChatInterface({
   const toasts = useKumoToastManager();
   const { currentUser } = useAuthenticatedApi();
   const getOverseer = useCallback(() => overseer, [overseer]);
-  const cacheRef = useRef<ChatCache>({
-    chats: new Map(),
-    messages: new Map(),
-    compacted: new Map(),
-    actionMessages: new Map(),
-    lastMessageTimestamp: null,
-  });
+  const cacheRef = useRef<ChatCache>(chatCacheForWorkspace(workspaceId));
+  cacheRef.current = chatCacheForWorkspace(workspaceId);
+  const cacheEpoch = useSyncExternalStore(subscribeChatCache, getChatCacheEpoch, getChatCacheEpoch);
   const provisionalRef = useRef<Map<number, ProvisionalChatState>>(new Map());
   // Per-chat buffers of live (unmaterialized) change rows (see ChatLiveChangeRows), fed by
   // changeApplied, pruned by materialization watermarks and generation bumps.
@@ -2633,10 +2674,9 @@ function ChatInterface({
   const [chatListReady, setChatListReady] = useState(false);
   const [chatListScope, setChatListScope] = useState<ChatListScope>("all");
   const [chatListVersion, setChatListVersion] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
   // Fetching the page before the selected chat's compaction boundary.
   const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
-  const [updateCounter, setUpdateCounter] = useState(0); // Force re-render when cache updates
+  const [, setUpdateCounter] = useState(0); // Force re-render when cache updates
   const [proposedChangesVersion, setProposedChangesVersion] = useState(0); // Incremented only for change-affecting messages
   // Rows live in refs (chatChangeRowsRef); this state only forces re-renders of their readers (the
   // draft banner) as rows arrive or get pruned. Subscribed consumers are fed synchronously and
@@ -2770,9 +2810,10 @@ function ChatInterface({
       cacheRef.current.messages.set(chatId, messages);
     }
 
-    for (const msg of page.messages) {
-      messages[msg.sequence] = { ...msg, timestamp: asDate(msg.timestamp) };
-      indexActionMessage(msg);
+    for (const [i, msg] of page.messages.entries()) {
+      const sequence = typeof msg.sequence === "number" ? msg.sequence : i;
+      messages[sequence] = { ...msg, sequence, timestamp: asDate(msg.timestamp) };
+      indexActionMessage(messages[sequence]!);
     }
 
     if (page.compacted) {
@@ -2781,6 +2822,7 @@ function ChatInterface({
         ...boundaries.filter(({to}) => to !== page.compacted!.to), page.compacted,
       ].toSorted((a, b) => a.to - b.to));
     }
+    emitChatCache();
   };
 
   // Held in a ref for the same reason as `refreshBoundaryRef` below: the subscriber outlives the
@@ -2929,18 +2971,22 @@ function ChatInterface({
     }
   }, [sidebarMode, selectedChatId, chatListReady, chatList]);
 
-  // Get messages for selected chat (filter out any undefined slots in sparse array)
-  // Memoized to prevent creating new array on every render
-  const currentMessages = useMemo(() => {
-    if (selectedChatId === null) return [];
-    return (cacheRef.current.messages.get(selectedChatId) || []).filter(
-      (msg) => msg !== undefined,
-    );
-  }, [selectedChatId, updateCounter]);
+  // Read the workspace cache on every render; cacheEpoch (useSyncExternalStore)
+  // is what re-renders the live fiber after an unmounted Strict Mode write.
+  const currentMessages = selectedChatId === null
+    ? []
+    : (cacheRef.current.messages.get(Number(selectedChatId))
+        ?? cacheRef.current.messages.get(selectedChatId)
+        ?? []).filter((msg) => msg !== undefined);
+  const isLoading = selectedChatId !== null
+    && !cacheRef.current.messages.has(Number(selectedChatId))
+    && !cacheRef.current.messages.has(selectedChatId);
   const currentCompactions = useMemo(() => {
     if (selectedChatId === null) return [];
-    return cacheRef.current.compacted.get(selectedChatId) ?? [];
-  }, [selectedChatId, updateCounter]);
+    return cacheRef.current.compacted.get(Number(selectedChatId))
+      ?? cacheRef.current.compacted.get(selectedChatId)
+      ?? [];
+  }, [selectedChatId, cacheEpoch]);
   const messageStates = useMemo(
     // The oldest boundary is the one whose proposed changes no loaded message accounts for.
     () => computeMessageStates(currentMessages, currentCompactions[0]),
@@ -3652,8 +3698,6 @@ function ChatInterface({
 
   // Subscribe to chat updates
   useEffect(() => {
-    let isMounted = true;
-
     const subscribe = async () => {
       try {
         // Load conversations via listChats/listModels. Do not pipeline those
@@ -3663,7 +3707,6 @@ function ChatInterface({
           overseer.listChats(),
           overseer.listModels(),
         ]);
-        if (!isMounted) return;
 
         for (const chat of chats) {
           cacheRef.current.chats.set(chat.id, {
@@ -3714,7 +3757,6 @@ function ChatInterface({
     });
 
     return () => {
-      isMounted = false;
       if (subscriptionRef.current) {
         subscriptionRef.current[Symbol.dispose]();
       }
@@ -3779,54 +3821,42 @@ function ChatInterface({
   }, [selectedChatId]);
 
 
-  // Load chat history when selectedChatId changes to a non-null value
+  // Load chat history when selectedChatId changes to a non-null value.
+  // Do not abort the in-flight read on cleanup: React Strict Mode remounts this
+  // effect before getChatHistory returns, and skipping cacheHistoryPage leaves
+  // the transcript spinner up forever.
   useEffect(() => {
     if (selectedChatId === null) return;
+    const chatId = Number(selectedChatId);
+    if (cacheRef.current.messages.has(chatId)) {
+      return;
+    }
 
-    // If we don't have messages for this chat yet, load them
-    if (!cacheRef.current.messages.has(selectedChatId)) {
-      let cancelled = false;
-      setIsLoading(true);
-      (async () => {
-        try {
-          const page = await overseer.getChatHistory(selectedChatId);
-          if (cancelled) return;
+    void (async () => {
+      try {
+        const page = await overseer.getChatHistory(chatId);
+        cacheHistoryPage(chatId, page);
 
-          cacheHistoryPage(selectedChatId, page);
-
-          // Update last message timestamp if needed
-          if (page.messages.length > 0) {
-            const lastMsg = page.messages[page.messages.length - 1];
-            if (
-              !cacheRef.current.lastMessageTimestamp ||
-              lastMsg.timestamp > cacheRef.current.lastMessageTimestamp
-            ) {
-              cacheRef.current.lastMessageTimestamp = lastMsg.timestamp;
-            }
-          }
-
-          // History may contain change-affecting messages that the subscriber
-          // didn't deliver (they predated the subscription). Bump the version so
-          // the proposed-changes effect re-evaluates with the loaded messages.
-          setProposedChangesVersion((prev) => prev + 1);
-          forceUpdate();
-        } catch (err) {
-          console.error("Failed to load chat history:", err);
-          // If loading fails (e.g., invalid chat ID), navigate back to chat list
-          if (!cancelled) {
-            onNavigateToChatRef.current(null, { replace: true });
-          }
-        } finally {
-          if (!cancelled) {
-            setIsLoading(false);
+        if (page.messages.length > 0) {
+          const lastMsg = page.messages[page.messages.length - 1];
+          const ts = asDate(lastMsg.timestamp);
+          if (
+            !cacheRef.current.lastMessageTimestamp ||
+            ts > cacheRef.current.lastMessageTimestamp
+          ) {
+            cacheRef.current.lastMessageTimestamp = ts;
           }
         }
-      })();
 
-      return () => {
-        cancelled = true;
-      };
-    }
+        setProposedChangesVersion((prev) => prev + 1);
+        forceUpdate();
+      } catch (err) {
+        console.error("Failed to load chat history:", err);
+        if (selectedChatIdRef.current === chatId) {
+          onNavigateToChatRef.current(null, { replace: true });
+        }
+      }
+    })();
     // LSP reports an error here, but tsc does not.
     // The LSP error is due to bugs that need to be fixed in Cap'n Web.
   }, [selectedChatId, overseer]);
@@ -5376,10 +5406,11 @@ function ChatInterface({
               {/* Messages */}
               <div
                 ref={messagesContainerRef}
+                data-testid="chat-transcript"
                 onScroll={handleMessagesScroll}
                 className="chat-panel min-h-0 flex-1 overscroll-contain overflow-y-auto"
               >
-                {isLoading ? (
+                {isLoading && currentMessages.length === 0 ? (
                   <div className="flex items-center justify-center py-10">
                     <div className="w-5 h-5 border-2 border-kumo-brand border-t-transparent rounded-full animate-spin" />
                   </div>

@@ -385,8 +385,8 @@ export default function GadgetEditor() {
   const toasts = useKumoToastManager()
 
   // ── core state ──────────────────────────────────────────────────────────────
-  // The workspace's workpiece list (gadget-type workpieces only in v1), kept live via
-  // subscribeToWorkpieces(). `workpiecesReady` flips once the initial listing has arrived.
+  // The workspace's workpiece list. Live subscribeToWorkpieces() is skipped on
+  // this kernel (client-stub export stalls later reads); v1 starts empty.
   const [workpieces, setWorkpieces] = useState<Map<WorkpieceId, WorkpieceSummary>>(new Map())
   const [workpiecesReady, setWorkpiecesReady] = useState(false)
   const knownWorkpieceIdsRef = useRef<Set<WorkpieceId> | null>(null)
