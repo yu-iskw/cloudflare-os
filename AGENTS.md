@@ -18,7 +18,6 @@ The following files are commonly important to reference:
 * **packages/workshop-shared**: Shared Cap'n Web RPC interface between client and server. Object-capability RPC over a browser WebSocket. Read the capnweb readme for details.
 * **packages/kumo**: `@gadgets/kumo` — type/runtime UI helpers used by the Workshop SPA.
 * **packages/backend-utils**: Shared server libraries. Logging lives at `@gadgets/backend-utils/logger` (see below).
-* **packages/configurator-ui**: Type-only component helpers used by optional gatekeeper resource configurator UI modules, compiled by `scripts/build-gatekeeper-configurator.ts`.
 
 ## Runtime topology
 
@@ -64,7 +63,7 @@ Architecture depth: `docs/plans/2026-09-03-001-architecture-gcp-os-plan.md` and 
 - Unused function parameters and caught errors are not lint-enforced; unused imports and local variables are still errors.
 - Some rules are kept as warnings (e.g. `no-shadow`) for incremental cleanup; warnings don't block CI.
 - Type-aware oxlint rules are intentionally not enabled yet. The type-aware engine is tsgo (TypeScript 7), which is now also the workspace `tsc`. Note `no-floating-promises` conflicts with RPC promise pipelining (below), which intentionally leaves promises unawaited. Type safety is still enforced by `tsc` through `pnpm types:check` and `pnpm build`.
-- The `typescript` catalog entry is 7.0.2 (tsgo), but TS 7's main export is `./lib/version.cjs` — the compiler API is gone from it — so everything that still needs that API gets its own JS-based compiler. `scripts/build-gatekeeper-configurator.ts` (and the mcp-shared schema test) import the root `typescript6` alias (`npm:typescript@6.0.3`); `capnweb-validate` (0.2.4+) ships its own capped `typescript` dependency for the `@validateRpc` transform. Packages that emit declarations set `"rootDir": "./src"` as TS 7 requires (TS5011).
+- The `typescript` catalog entry is 7.0.2 (tsgo), but TS 7's main export is `./lib/version.cjs` — the compiler API is gone from it — so everything that still needs that API gets its own JS-based compiler. `capnweb-validate` (0.2.4+) ships its own capped `typescript` dependency for the `@validateRpc` transform. Packages that emit declarations set `"rootDir": "./src"` as TS 7 requires (TS5011).
 - No tsconfig sets `baseUrl`, and none should. Every `paths` entry here is an explicit relative path, which `tsc` resolves against the tsconfig's own directory, so `baseUrl` bought nothing — and TypeScript 7 removed the option outright (TS5102).
 
 IMPORTANT: This repository uses pnpm, not npm. Always use pnpm.

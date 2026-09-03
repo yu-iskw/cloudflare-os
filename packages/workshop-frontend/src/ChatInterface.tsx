@@ -20,7 +20,7 @@ import {
   Popover,
   Tooltip,
   useKumoToastManager,
-} from "@cloudflare/kumo";
+} from "@gadgets/kumo";
 
 import {
   CaretDown,
@@ -37,7 +37,6 @@ import {
   Swap,
   ArrowUUpLeft,
   ArrowsClockwise,
-  Lightning,
   Copy,
   Clipboard as ClipboardIcon,
   WarningCircle,
@@ -103,7 +102,6 @@ import { useResolveAction } from "./useResolveAction";
 import { safeExternalUrl } from "./utils/safeExternalUrl";
 import { useAuthenticatedApi } from "./AuthContext";
 import { useVendorBranding } from "./useVendorBranding";
-import OutOfCreditsModal from "./components/billing/OutOfCreditsModal";
 import { formatFullTimestamp } from "./utils/formatTimestamp";
 import { copyToClipboard } from "./clipboard";
 import { isImeComposing } from "./keyboardEvent";
@@ -2615,18 +2613,14 @@ function ChatInterface({
   const editPreviewsRef = useRef<Map<number, StreamingEditPreview>>(new Map());
   const editPreviewListenersRef =
       useRef<Map<number, Set<(event: EditPreviewEvent) => void>>>(new Map());
-  // Last server-instance generation seen (survives reconnects). Used to detect a full DO restart,
-  // in which case in-flight provisional streams were lost and must be discarded. See
+  // Last server-instance generation seen (survives reconnects). Used to detect a Cloud Run replica
+  // recycle, in which case in-flight provisional streams were lost and must be discarded. See
   // AiChatSubscriber.streamGeneration.
   const lastStreamGenerationRef = useRef<number | undefined>(undefined);
 
   // UI state
   const [_isSubscribed, setIsSubscribed] = useState(false);
   const [chatListReady, setChatListReady] = useState(false);
-  // Out-of-credits modal (free-tier limit reached). `usageModalShownFor` tracks the error sequence
-  // we've already auto-opened for, so dismissing it doesn't immediately reopen.
-  const [usageModalOpen, setUsageModalOpen] = useState(false);
-  const usageModalShownForRef = useRef<number | null>(null);
   const [chatListScope, setChatListScope] = useState<ChatListScope>("all");
   const [chatListVersion, setChatListVersion] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -3001,20 +2995,6 @@ function ChatInterface({
   }, [currentMessages, currentUser]);
 
   const lastMessageSequence = currentMessages[currentMessages.length - 1]?.sequence;
-
-  // Auto-open the out-of-credits modal once when the latest message is a usage-limit error.
-  const lastMessage = currentMessages[currentMessages.length - 1];
-  useEffect(() => {
-    if (
-      lastMessage &&
-      lastMessage.type === "error" &&
-      lastMessage.code === "usage_limit" &&
-      usageModalShownForRef.current !== lastMessage.sequence
-    ) {
-      usageModalShownForRef.current = lastMessage.sequence;
-      setUsageModalOpen(true);
-    }
-  }, [lastMessage]);
 
   // Get metadata for selected chat
   const currentChatMetadata =
@@ -5931,18 +5911,6 @@ function ChatInterface({
                                       </span>
                                     </Tooltip>
                                   </button>
-                                  {isLast && msg.code === "usage_limit" && (
-                                    <Tooltip content="Add credits to continue." asChild>
-                                      <button
-                                        type="button"
-                                        onClick={() => setUsageModalOpen(true)}
-                                        className="flex flex-shrink-0 cursor-pointer items-center gap-1 rounded-md px-1 py-0.5 text-[13px] leading-4 font-medium text-kumo-default transition-[color,opacity,transform] duration-150 ease-out hover:text-kumo-default-hover focus-visible:text-kumo-default-hover focus-visible:outline-none active:scale-[0.98]"
-                                      >
-                                        <Lightning size={12} weight="bold" />
-                                        Continue
-                                      </button>
-                                    </Tooltip>
-                                  )}
                                   {isLast && msg.code !== "usage_limit" && (
                                     <Tooltip content="Retry the last action." asChild>
                                       <button
@@ -6383,10 +6351,6 @@ function ChatInterface({
         initialVendorId={connectionAccept?.vendorId}
         initialResourceUrl={connectionAccept?.resourceUrl}
         initialResourceUrlPattern={connectionAccept?.resourceUrlPattern}
-      />
-      <OutOfCreditsModal
-        open={usageModalOpen}
-        onClose={() => setUsageModalOpen(false)}
       />
     </div>
   );
