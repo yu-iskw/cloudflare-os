@@ -15,15 +15,23 @@ export type SandboxOptions = {
 /**
  * Run untrusted JS with deny-egress, no inherited env — Cloud Run `sandbox do`.
  * Capability calls stay on the host; never pass `--allow-egress`.
+ *
+ * A `.js`/`.mjs` `SANDBOX_BIN` is launched with `process.execPath` so local fakes
+ * do not need `PATH` (the production box is a real binary and still gets `env: {}`).
  */
 export async function sandboxDo(code: string, options: SandboxOptions = {}): Promise<SandboxResult> {
   const binary = options.binary ?? process.env.SANDBOX_BIN ?? "/usr/local/gcp/bin/sandbox";
   const args = ["do", "--deny-all"];
+  const isJsFake = binary.endsWith(".js") || binary.endsWith(".mjs");
   return await new Promise((resolve, reject) => {
-    const child = spawn(binary, args, {
-      env: {},
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    const child = spawn(
+      isJsFake ? process.execPath : binary,
+      isJsFake ? [binary, ...args] : args,
+      {
+        env: {},
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    );
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => {

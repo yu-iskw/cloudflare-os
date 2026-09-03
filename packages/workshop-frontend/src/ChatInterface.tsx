@@ -2433,9 +2433,19 @@ function startOfDay(d: Date): Date {
   return out;
 }
 
+/** Cap'n Web Dates usually survive the wire; coerce so a string/number cannot crash the chat list. */
+function asDate(value: unknown): Date {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value === "number" || typeof value === "string") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return new Date();
+}
+
 function getChatTimeBucket(date: Date, now: Date): ChatTimeBucket {
   const diffDays = Math.round(
-    (startOfDay(now).getTime() - startOfDay(date).getTime()) / 86_400_000,
+    (startOfDay(now).getTime() - startOfDay(asDate(date)).getTime()) / 86_400_000,
   );
   if (diffDays <= 0) return "today";
   if (diffDays === 1) return "yesterday";
@@ -2761,7 +2771,7 @@ function ChatInterface({
     }
 
     for (const msg of page.messages) {
-      messages[msg.sequence] = msg;
+      messages[msg.sequence] = { ...msg, timestamp: asDate(msg.timestamp) };
       indexActionMessage(msg);
     }
 
@@ -2841,7 +2851,7 @@ function ChatInterface({
   // Get sorted list of chats from cache
   const chatList = useMemo(
     () => Array.from(cacheRef.current.chats.values()).sort(
-      (a, b) => b.lastActive.getTime() - a.lastActive.getTime(),
+      (a, b) => asDate(b.lastActive).getTime() - asDate(a.lastActive).getTime(),
     ),
     [chatListVersion],
   );
@@ -3442,15 +3452,16 @@ function ChatInterface({
       }
 
       // Set message at sequence index (idempotent)
-      messages[msg.sequence] = msg;
-      indexActionMessage(msg);
+      const stored = { ...msg, timestamp: asDate(msg.timestamp) };
+      messages[msg.sequence] = stored;
+      indexActionMessage(stored);
 
       // Update last message timestamp
       if (
         !cacheRef.current.lastMessageTimestamp ||
-        msg.timestamp > cacheRef.current.lastMessageTimestamp
+        stored.timestamp > cacheRef.current.lastMessageTimestamp
       ) {
-        cacheRef.current.lastMessageTimestamp = msg.timestamp;
+        cacheRef.current.lastMessageTimestamp = stored.timestamp;
       }
 
       // Only trigger proposed-changes recomputation for message types that affect the code.
@@ -3668,9 +3679,19 @@ function ChatInterface({
             overseer.listModels(),
           ]);
 
-          chats.forEach((chat) => {
-            cacheRef.current.chats.set(chat.id, chat);
-          });
+          for (const chat of chats) {
+            cacheRef.current.chats.set(chat.id, {
+              ...chat,
+              started: asDate(chat.started),
+              lastActive: asDate(chat.lastActive),
+            });
+          }
+          // Tell GadgetEditor before the next render: a throw in lastActive.getTime()
+          // must not leave the "Loading conversation…" overlay up forever.
+          onChatCountChangeRef.current?.(
+            cacheRef.current.chats.size,
+            cacheRef.current.chats.has(0),
+          );
           bumpChatListVersion();
           setChatListReady(true);
 

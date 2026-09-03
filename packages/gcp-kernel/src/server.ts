@@ -28,6 +28,8 @@ const TYPES: Record<string, string> = {
 export function createKernelServer(options: KernelOptions = {}): {
   server: Server;
   ledger: MemoryLedger;
+  /** Close live `/api` sockets without stopping the HTTP server (SPA reconnects). */
+  dropApiSockets: () => void;
 } {
   const ledger = options.ledger ?? createMemoryLedger();
   const replicaId = options.replicaId ?? `replica-${process.pid}`;
@@ -51,7 +53,13 @@ export function createKernelServer(options: KernelOptions = {}): {
     const api = new PublicApiImpl(ledger, replicaId, assertion);
     newWebSocketRpcSession(ws as never, api);
   });
-  return { server, ledger };
+  return {
+    server,
+    ledger,
+    dropApiSockets: () => {
+      for (const client of wss.clients) client.close();
+    },
+  };
 }
 
 function serveSpa(root: string, req: IncomingMessage, res: ServerResponse): void {

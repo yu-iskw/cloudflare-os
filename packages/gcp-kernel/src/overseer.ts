@@ -86,6 +86,11 @@ export class OverseerImpl extends RpcTarget {
     return { messages: messages.map((row) => this.#toMessage(row)) };
   }
 
+  async getChatMessage(chatId: number, sequence: number): Promise<AiChatMessage | undefined> {
+    const row = (this.ledger.chatMessages.get(chatId) ?? []).find((m) => m.sequence === sequence);
+    return row ? this.#toMessage(row) : undefined;
+  }
+
   async newChat(initialMessage: string, modelId: string | null): Promise<number> {
     const text = typeof initialMessage === "string" ? initialMessage : "";
     const chat = this.ledger.createChat(this.workspaceId, text.slice(0, 40) || "New Chat");
@@ -164,6 +169,8 @@ export class OverseerImpl extends RpcTarget {
   }
 
   async subscribeToPresence(subscriber: { init(participants: unknown[]): void }): Promise<RpcStub<{}>> {
+    // Do not await client stubs inside the server method: the SPA pipelines
+    // listChats() on the same session and a round-trip here stalls that read.
     subscriber.init([]);
     return dummySub();
   }
@@ -178,15 +185,22 @@ export class OverseerImpl extends RpcTarget {
     return dummySub();
   }
 
-  async subscribeToChat(subscriber: AiChatSubscriber): Promise<RpcStub<{}>> {
+  /**
+   * Register the chat subscriber and return immediately. Calling `streamGeneration` /
+   * `metadata` / `message` *inside* this method deadlocks Cap'n Web: the SPA pipelines
+   * `listChats()` on the same session and will not process those client RPCs until the
+   * subscribe call returns. Replay of history is `listChats` + `getChatHistory`.
+   * `streamGeneration` is delivered on the next turn so reconnect detection still works.
+   */
+  subscribeToChat(subscriber: AiChatSubscriber): RpcStub<{}> {
     this.#chatSubscribers.add(subscriber);
-    subscriber.streamGeneration(1);
-    for (const meta of this.#chatMeta()) {
-      subscriber.metadata(meta);
-      for (const row of this.ledger.chatMessages.get(meta.id) ?? []) {
-        subscriber.message(this.#toMessage(row));
+    setImmediate(() => {
+      try {
+        subscriber.streamGeneration(1);
+      } catch {
+        this.#chatSubscribers.delete(subscriber);
       }
-    }
+    });
     return dummySub();
   }
 
@@ -214,11 +228,11 @@ export class OverseerImpl extends RpcTarget {
   }
 
   #chatMeta(): AiChatMetadata[] {
-    const now = new Date();
     const out: AiChatMetadata[] = [];
     for (const chat of this.ledger.chats.values()) {
       if (chat.workspaceId !== this.workspaceId) continue;
-      out.push({ id: chat.id, title: chat.title, started: now, lastActive: now });
+      const started = new Date();
+      out.push({ id: chat.id, title: chat.title, started, lastActive: new Date(started.getTime()) });
     }
     return out;
   }
