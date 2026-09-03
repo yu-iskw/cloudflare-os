@@ -1,4 +1,4 @@
-import { Button, Input, InputArea } from '@cloudflare/kumo'
+import { Button, Input, InputArea } from '@gadgets/kumo'
 import type { ComponentProps, ReactNode } from 'react'
 
 const buttonBaseClassName =

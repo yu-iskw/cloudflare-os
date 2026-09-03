@@ -1,4 +1,4 @@
-import type { RpcStub, RpcTarget } from "cloudflare:workers";
+import type { RpcStub, RpcTarget } from "capnweb";
 
 /** A completed Gadget response that should be delivered back to the chat gateway. */
 export type GadgetResponse = {
@@ -47,7 +47,7 @@ export type SubmitExternalMessageResult =
       message: string;
     };
 
-/** Service binding RPC interface used by chat gateway workers. */
+/** Service RPC interface used by chat gateway hosts. */
 export interface ExternalMessageGateway {
   /** Submit an external chat message for Gadget routing and execution. */
   submitExternalMessage(input: SubmitExternalMessageInput): Promise<SubmitExternalMessageResult>;

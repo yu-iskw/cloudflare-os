@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { CaretLeft, CaretRight, Check, Lightning, PencilSimple, Pulse, X } from '@phosphor-icons/react'
 import { FormatGlyph } from './components/format/FormatVisuals'
-import { Tooltip } from '@cloudflare/kumo'
+import { Tooltip } from '@gadgets/kumo'
 import type { WorkpieceId, WorkpieceSummary } from '@gadgets/workshop-shared/api'
 import { CountBadge } from './components/CountBadge'
 import { WorkshopIconButton, WorkshopInput } from './components/WorkshopControls'

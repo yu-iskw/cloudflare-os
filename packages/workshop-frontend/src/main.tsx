@@ -25,9 +25,7 @@ async function devAutoLogin(stub: RpcStub<PublicApi>): Promise<void> {
   const username = import.meta.env.VITE_DEV_USERNAME ?? 'dev'
   const password = import.meta.env.VITE_DEV_PASSWORD ?? 'devpassword'
 
-  // Derive the passwordHash the same way the app does (argon2id via hashPassword),
-  // but here we use the same SERVICE_SALT + SHA-256 shortcut that wrangler dev accepts
-  // in local mode. We import hashPassword from the existing util.
+  // Derive the passwordHash the same way the app does (argon2id via hashPassword).
   const { hashPassword } = await import('./passwordHash')
   const passwordHash = await hashPassword(username, password)
 
@@ -83,12 +81,7 @@ const withTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> => {
 };
 
 function getBackendHost(): string {
-  // Only the Vite dev server is hosted separately from the backend. Built assets are served from
-  // the same origin in both production and run-local mode.
-  if (import.meta.env.DEV) {
-    return import.meta.env.VITE_BACKEND_HOST?.trim() || 'localhost:8787';
-  }
-  return window.location.host;
+  return import.meta.env.VITE_BACKEND_HOST?.trim() || window.location.host;
 }
 
 function startConnection(): RpcStub<PublicApi> {
@@ -108,6 +101,7 @@ const disposeQuietly = (stub: RpcStub<PublicApi>) => {
 // proven connection: capnweb queues sends while a socket is still CONNECTING, so an unproven stub
 // looks fine right up until everything pipelined onto it fails at once.
 async function reconnect(): Promise<RpcStub<PublicApi>> {
+  // Cloud Run caps a WebSocket at 60 minutes; this reconnects before (and after) that drop.
   // Fast recovery from one-off blips: skip the first backoff if the dying connection was up a while.
   let skipSleep = Date.now() - lastConnectTime >= INITIAL_BACKOFF_MS;
   let backoff = INITIAL_BACKOFF_MS;

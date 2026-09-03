@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Dialog, Button, Input } from '@cloudflare/kumo'
+import { Dialog, Button, Input } from '@gadgets/kumo'
 import { X } from '@phosphor-icons/react'
 import type { Connection, ConnectionResource } from '../../data/sample'
 import { logoComponents } from '../ConnectionLogos'

@@ -23,10 +23,10 @@ describe("pnpmCommand", () => {
 
   // The reason `shell: true` was not an option: a shell would split this argument in two.
   it("passes arguments through untouched, including one containing a space", () => {
-    const configPath = "C:\\Users\\Some Name\\cloudflare-os\\wrangler.jsonc";
+    const configPath = "C:\\Users\\Some Name\\company-os\\kernel.json";
     const [, args] = pnpmCommand(
-        ["exec", "wrangler", "dev", "-c", configPath], { npm_execpath: PNPM_MJS }, "win32");
-    assert.deepEqual(args, [PNPM_MJS, "exec", "wrangler", "dev", "-c", configPath]);
+        ["exec", "node", "src/main.ts", "-c", configPath], { npm_execpath: PNPM_MJS }, "win32");
+    assert.deepEqual(args, [PNPM_MJS, "exec", "node", "src/main.ts", "-c", configPath]);
   });
 
   // Substituting this unchecked would run `npm install` against a pnpm workspace.

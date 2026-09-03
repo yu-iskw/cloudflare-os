@@ -1,9 +1,8 @@
 /**
  * Shared Vite+ `test` task for every package whose tests run under vitest, used by each such
  * package's `vite.config.ts`. Plain objects rather than `defineConfig`, so the packages need no
- * resolvable `vite-plus` import of their own -- the same reason
- * `gatekeeper-configurator-vite-config.ts` takes that shape. The task types below are structural
- * copies of Vite+'s rather than imports of them, which is what keeps that true.
+ * resolvable `vite-plus` import of their own. The task types below are structural copies of
+ * Vite+'s rather than imports of them, which is what keeps that true.
  *
  * TypeScript, unlike the `.mjs` beside it in this directory, because being TS means a malformed task
  * or a mistyped `base` is a compile error rather than a glob that silently never matches.
@@ -52,10 +51,9 @@ export type RunTasksConfig = {
  * - `node_modules/.vite-temp/*.config.ts.timestamp-*.mjs` -- vite's default `bundle` config loader
  *   compiles a TS config to a temp module here, imports it, then unlinks it. The name carries a
  *   timestamp, so every run writes a fresh path and no run could ever match a previous fingerprint.
- * - `.wrangler/validate/**` -- the capnweb-validate build tree, regenerated and then loaded by any
- *   suite that starts a worker under `@cloudflare/vitest-pool-workers`. It is derived from sources
- *   that are tracked, so dropping it from the fingerprint loses no invalidation. `build:app`
- *   excludes the same tree, for the same reason.
+ * - `.validate/**` -- optional codegen scratch regenerated and then loaded by a suite.
+ *   It is derived from sources that are tracked, so dropping it from the fingerprint loses
+ *   no invalidation.
  *
  * These are tool-managed scratch paths that Vite+'s own cooperative tracking already excludes for
  * `vp build` (`guide/automatic-data-tracking.md` names `node_modules/.vite-temp` as a path that

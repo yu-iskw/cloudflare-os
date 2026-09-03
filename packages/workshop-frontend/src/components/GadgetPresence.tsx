@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { Popover, Tooltip } from '@cloudflare/kumo'
+import { Popover, Tooltip } from '@gadgets/kumo'
 import { RpcStub, RpcTarget } from 'capnweb'
 import { Overseer, AuthenticatedApi, PresenceParticipant, PresenceSubscriber } from '@gadgets/workshop-shared/api'
 import { PersonAvatar } from './PersonAvatar'

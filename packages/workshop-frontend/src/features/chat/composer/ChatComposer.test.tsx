@@ -11,8 +11,8 @@ const testState = vi.hoisted(() => ({
   addToast: vi.fn<(toast: unknown) => void>(),
 }));
 
-vi.mock("@cloudflare/kumo", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@cloudflare/kumo")>()),
+vi.mock("@gadgets/kumo", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@gadgets/kumo")>()),
   useKumoToastManager: () => ({ add: testState.addToast }),
 }));
 

@@ -11,12 +11,20 @@
 // to such resources, enabling the Gadget Workshop to grant a particular Gadget fine-grained
 // access to just the things the user wants that Gadget to access.
 //
-// Each adapter is deployed as a completely independent Workers application from the Gadgets
-// Workshop itself, and is provided to the Workshop as a service binding. The Workshop communicates
-// with the adapter over JavaScript RPC. The types in this file define that RPC interface. The
+// Each adapter is deployed as a completely independent Cloud Run service from the Gadgets
+// Workshop itself. The Workshop communicates with the adapter over JavaScript RPC. The types in this file define that RPC interface. The
 // `Adapter` type is the root interface implemented by the service binding.
 
-import type { WorkerEntrypoint, DurableObject, RpcTarget, RpcStub } from "cloudflare:workers";
+import type { RpcTarget, RpcStub } from "capnweb";
+
+/** Host-side RPC entry. */
+export type HostEntrypoint = RpcTarget;
+
+/** Resource actor class hosted by the kernel (not a stored RPC stub). */
+export type ResourceClass<T> = abstract new (...args: unknown[]) => T;
+
+/** Capability stub handed across the kernel/gatekeeper boundary. */
+export type Fetcher<T> = RpcStub<T>;
 
 /**
  * A pagination cursor.
@@ -224,7 +232,7 @@ export type ResourceDescription = {
 
   /**
    * Some resources implement the ability for the client to subscribe to events. The application
-   * implements a "hook", which is a WorkerEntrypoint that implements the TypeScript interface
+   * implements a "hook", which is a host RPC entry that implements the TypeScript interface
    * named by `hookTsType` (which must be one of the exports from `getTypescriptTypes()`).
    */
   hookTsType?: string;
@@ -443,7 +451,7 @@ export type GatekeeperConnectOptions = {
   resourceUrlPatterns?: string[];
 };
 
-export interface GatekeeperVendor extends WorkerEntrypoint {
+export interface GatekeeperVendor extends HostEntrypoint {
   /** Get display info for the service, suitable for display to a user. */
   describe(): Promise<VendorDescription>;
 
@@ -523,7 +531,7 @@ export interface GatekeeperVendor extends WorkerEntrypoint {
   createAccount?(): Promise<Fetcher<GatekeeperUser>>;
 }
 
-export interface GatekeeperConnectCallback extends WorkerEntrypoint {
+export interface GatekeeperConnectCallback extends HostEntrypoint {
   /**
    * Indicates the connection completed successfully.
    *
@@ -565,7 +573,7 @@ export interface GatekeeperConnectCallback extends WorkerEntrypoint {
  * available through it, so needs to be guarded carefully. Hence, only the Workshop itself should
  * ever have direct access to an Adapter object.
  */
-export interface GatekeeperUser extends WorkerEntrypoint {
+export interface GatekeeperUser extends HostEntrypoint {
   /** Get display info for an account, suitable for display to a user. */
   describe(): Promise<AccountDescription>;
 
@@ -589,7 +597,7 @@ export interface GatekeeperUser extends WorkerEntrypoint {
    * ID. The returned `resource` indicates which SupportedResource matched the URL.
    */
   getGatekeeperClassFor(url: string): Promise<{
-    class: DurableObjectClass<Gatekeeper<any>>;
+    class: ResourceClass<Gatekeeper<any>>;
     resource: SupportedResource;
   }>;
 
@@ -622,7 +630,7 @@ export interface GatekeeperUser extends WorkerEntrypoint {
   /**
    * For vendors that advertise `providesAuth`, returns the account's email address for use as the
    * user's sign-in identity. The email MUST be verified by the provider (e.g. Google
-   * `email_verified`, a GitHub primary+verified email, or a Cloudflare account email) — the
+   * `email_verified`, a GitHub primary+verified email, or an IdP account email) — the
    * Workshop keys accounts by email, so an unverified address would allow account takeover.
    * Returns null when the account has no verified email or the vendor does not support auth.
    */
@@ -660,7 +668,7 @@ export interface GatekeeperUser extends WorkerEntrypoint {
    * The returned class is imbued (via `ctx.props`) with whatever the account needs to serve the
    * singleton (e.g. the account id and sharing domain).
    */
-  getSingletonGatekeeperClass?(): Promise<DurableObjectClass<Gatekeeper<any>>>;
+  getSingletonGatekeeperClass?(): Promise<ResourceClass<Gatekeeper<any>>>;
 
   /**
    * The account's full-page management UI (iframe HTML + ui capability). `context.isAdmin` is passed
@@ -687,7 +695,7 @@ export interface GatekeeperUser extends WorkerEntrypoint {
  * The overseer promises only to pass a `GatekeeperUserVerifier` object back to the same gatekeeper
  * that created it, so addObserver() can then call that non-standard method and trust the results.
  */
-export interface GatekeeperUserVerifier extends WorkerEntrypoint {}
+export interface GatekeeperUserVerifier extends HostEntrypoint {}
 
 /**
  * Interface exposed by a Gatekeeper instance implementing a specific resource binding on a
@@ -696,7 +704,7 @@ export interface GatekeeperUserVerifier extends WorkerEntrypoint {}
  * The Gatekeeper executes as a Durable Object Facet, where it is a child of the Overseer. This
  * interface is exposed to the Overseer, not directly to the Gadget.
  */
-export interface Gatekeeper<Session> extends DurableObject {
+export interface Gatekeeper<Session> extends RpcTarget {
   /**
    * Get more info on the specific resource without actually granting access. This information is
    * to be presented to the user in the UI, before the user actually confirms they want to grant
@@ -999,48 +1007,18 @@ export interface ApprovalQueue extends ObservationAuthorizer {
    * `ApprovalQueue` -- since a hook invocation is almost always an observation of some sort.
    * Finally, it invokes the `callback` object to deliver the event to the gadget.
    *
-   * Persistent stubs are (as of this writing) a relatively new feature of the Workers Runtime.
-   * A worker can construct an `RpcStub` that is "persistent", meaning it can be stored into
-   * Durable Object storage, as well as be used as part of the `props` for a WorkerEntrypoint. To
-   * create such a stub, the worker:
-   * 1. Implements a `[restore](params)` method, then
-   * 2. Calls `ctx.restore(params)` to invoke that method.
+   * Persistent stubs are a Cap'n Web feature. The kernel stores a *capability record*
+   * (account id, vendor, resource URL) and reconnects a live stub when needed — never JSON
+   * of an RPC stub in Postgres.
    *
-   *     import {restore, RpcTarget, DurableObject} from "cloudflare:workers";
+   *     import { RpcTarget } from "capnweb";
    *
-   *     class Gadget extends DurableObject {
-   *       [restore]({type: string, greeting: string}) {
-   *         switch (type) {
-   *           case "greeter":
-   *             return new Greeter(greeting);
-   *           default:
-   *             throw new Error("unknown restore params");
-   *         }
-   *       }
-   *
-   *       async registerSomeHook() {
-   *         // Create a persistent stub.
-   *         let callback = await this.ctx.restore({type: "greeter", greeting: "Hello"});
-   *
-   *         // Register it against a hook offered by some gatekeeper API.
-   *         await this.env.SOME_GATEKEEPER.onSomeEventHook(callback);
-   *       }
-   *     }
-   *
-   *     // Some sort of RpcTarget implementation (just an example).
    *     class Greeter extends RpcTarget {
-   *       constructor(greeting) {
-   *         super();
-   *         this.greeting = greeting;
-   *       }
-   *       greet(name) {
+   *       constructor(private greeting: string) { super(); }
+   *       greet(name: string) {
    *         return `${this.greeting}, ${name}!`;
    *       }
    *     }
-   *
-   * The idea here is that `ctx.restore(params)` creates a *persistent* stub which can be
-   * re-created any time it is needed by calling the `[restore]()` method with the same params
-   * again. The params themselves also have to be persistable.
    */
   bindHook<Hook extends RpcTarget>(
         controller: Fetcher<HookController<Hook>>, callback: RpcStub<Hook>,
@@ -1242,7 +1220,7 @@ export type HookTargetMetadata = {
  * Object passed to `ApprovalQueue.bindHook()`, providing the overseer with callbacks to enable
  * or disable a hook.
  */
-export interface HookController<Hook extends RpcTarget> extends WorkerEntrypoint {
+export interface HookController<Hook extends RpcTarget> extends HostEntrypoint {
   /**
    * Called to enable this hook. When a hook event is to be delivered, initiator.startHook() must
    * be called first, before actually invoking the hook.
@@ -1271,7 +1249,7 @@ export interface HookController<Hook extends RpcTarget> extends WorkerEntrypoint
  * A gatekeeper MUST use a HookInitiator to obtain a fresh version of the callback stub any time
  * it wants to deliver an event. It must not store the callback in its own storage.
  */
-export interface HookInitiator<Hook extends RpcTarget> extends WorkerEntrypoint {
+export interface HookInitiator<Hook extends RpcTarget> extends HostEntrypoint {
   /**
    * Indicates that the hook is about to be invoked.
    *

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Text, Loader, Banner } from '@cloudflare/kumo'
+import { Text, Loader, Banner } from '@gadgets/kumo'
 import { Sparkle } from '@phosphor-icons/react'
 import { RpcStub, RpcTarget, newMessagePortRpcSession } from 'capnweb'
 import { GadgetClient, ConsoleLogEvent } from '@gadgets/workshop-shared/api'

@@ -11,7 +11,7 @@
 //   alternative clients.
 // - SPA is just easier to think about.
 //
-// The entire API between the client and server is an RPC API, using Cloudflare's JavaScript RPC,
+// The entire API between the client and server is an RPC API, using Cap'n Web,
 // which essentially allows natural JavaScript / TypeScript interfaces to be exposed over the
 // network.
 //
@@ -52,12 +52,12 @@ export interface PublicApi extends RpcTarget {
 
   /**
    * Returns deployment-level configuration the client needs at boot (auth mode, available sign-in
-   * vendors, whether the Cloudflare limits flow is enabled). Contains no secrets.
+   * vendors). Contains no secrets.
    */
   getServerConfig(): Promise<ServerConfig>;
 
   /**
-   * Begin a sign-in via an authentication gatekeeper (e.g. "google", "github", "cloudflare").
+   * Begin a sign-in via an authentication gatekeeper (e.g. "google", "github").
    * Returns a `url` the client opens in a new tab (the gatekeeper's OAuth popup, which self-closes)
    * and an `attempt` stub whose `wait()` resolves once the popup completes. The vendor must be
    * auth-capable and allowlisted (see ServerConfig.authVendors); throws otherwise.
@@ -71,12 +71,11 @@ export interface PublicApi extends RpcTarget {
   authenticate(token: string): Promise<AuthenticatedApi>;
 
   /**
-   * Like authenticate() but the server is expected to be sitting behind Cloudflare Access, and the
-   * client is expected to have already authenticated with Access (before they could load the
-   * application in their browser at all). The credentials from the Cloudflare Access session will
-   * be used to authenticate the user.
+   * Like authenticate() but the origin sits behind Identity-Aware Proxy, and the
+   * browser has already authenticated with IAP. The IAP assertion on the WebSocket
+   * upgrade is used to identify the user.
    */
-  authenticateFromCfAccess(): Promise<AuthenticatedApi>;
+  authenticateFromIap(): Promise<AuthenticatedApi>;
 
   /**
    * Login with username and password.
@@ -426,24 +425,6 @@ export interface AuthenticatedApi extends RpcTarget {
 
   /** Mark the onboarding wizard as completed. */
   completeOnboarding(): Promise<void>;
-
-  // --- Optional Cloudflare limits / top-up flow (only meaningful when enabled server-side) ---
-
-  /** Get the user's current free-tier usage and connected-account balance. */
-  getCloudflareUsage(): Promise<CloudflareUsageInfo>;
-
-  /**
-   * List the Cloudflare accounts the connected grant can access. Used to prompt account selection
-   * when the user has more than one. Returns an empty array if not connected. Connecting Cloudflare
-   * is done via the Cloudflare gatekeeper (connectAccount("cloudflare")) or by signing in with it.
-   */
-  listCloudflareAccounts(): Promise<CloudflareAccountOption[]>;
-
-  /**
-   * Select which Cloudflare account to bill. Persists the choice. Throws if the account isn't
-   * accessible.
-   */
-  selectCloudflareAccount(accountId: string): Promise<void>;
 
   /**
    * Upload a user avatar image. The data should be a compressed image (JPEG/PNG), ideally under
@@ -837,7 +818,7 @@ export const MAX_SITE_NAME_LENGTH = 40;
  * What this deployment calls itself when the admin has not set a custom `siteName`. Also the
  * product's own name, so it appears in prose the server and UI address to the user.
  */
-export const DEFAULT_SITE_NAME = "Cloudflare OS";
+export const DEFAULT_SITE_NAME = "Company OS";
 
 /**
  * The name to display for this deployment. Accepts an unset or not-yet-loaded `siteName` so both
@@ -859,7 +840,7 @@ export type AdminSettingsView = {
   signupsEnabled: boolean;
   /** Site name shown next to the top-bar logo ("" falls back to DEFAULT_SITE_NAME). */
   siteName: string;
-  /** Custom deployment logo, or undefined to use the default Cloudflare OS mark. */
+  /** Custom deployment logo, or undefined to use the default Company OS mark. */
   siteLogo?: AvatarImage;
   /** Agent system-prompt instructions ("" when unset). */
   instanceInstructions: string;
@@ -939,7 +920,7 @@ export interface AdminApi {
   setSiteName(name: string): Promise<void>;
 
   /** Set the deployment logo from browser-rasterized PNG bytes and return its canonical public
-   * image, or undefined after reset. Pass null to restore the default Cloudflare OS mark. The
+   * image, or undefined after reset. Pass null to restore the default Company OS mark. The
    * caller must supply decodable PNG data; the server enforces its header, size, and dimensions. */
   setSiteLogo(data: Uint8Array | null): Promise<AvatarImage | undefined>;
 
@@ -1066,12 +1047,6 @@ export type ServerConfig = {
   passwordAuthEnabled: boolean;
 
   /**
-   * Whether the optional Cloudflare free-tier limits + top-up flow is enabled. When false (the
-   * default, e.g. self-hosted), usage is unlimited and the credits UI is hidden.
-   */
-  cloudflareLimitsEnabled: boolean;
-
-  /**
    * Whether new account signups are allowed (admin-configurable, default true). The signup page
    * hides the create-account form when false.
    */
@@ -1083,7 +1058,7 @@ export type ServerConfig = {
    */
   siteName: string;
 
-  /** Custom deployment logo, or undefined to use the default Cloudflare OS mark. */
+  /** Custom deployment logo, or undefined to use the default Company OS mark. */
   siteLogo?: AvatarImage;
 
   /** Deployment-wide top-bar notice (centered text in the top navigation bar). Empty when none is set. */
@@ -1100,44 +1075,8 @@ export type ServerConfig = {
   accentColor: string;
 };
 
-/**
- * Usage + Cloudflare-connection status for the optional limits flow. Returned by
- * `AuthenticatedApi.getCloudflareUsage()`.
- */
-export type CloudflareUsageInfo = {
-  /** Whether the limits flow is enabled at all. When false, the rest is informational only. */
-  cloudflareLimitsEnabled: boolean;
-  /** When true, the user has unlimited access (limits disabled) and counters are not tracked. */
-  unlimited: boolean;
-
-  /** Free-tier daily usage. */
-  dailyUsed: number;
-  dailyLimit: number;
-  remaining: number;
-  /** ISO timestamp when the daily window resets. */
-  resetAt?: string;
-
-  /** Whether the user has connected a Cloudflare account. */
-  connected: boolean;
-  /** The connected account's AI Gateway credit balance (USD), or null if unknown/not connected. */
-  balance: number | null;
-  accountId?: string;
-  accountName?: string;
-  /**
-   * True when connected but the user has multiple Cloudflare accounts and must pick which one to
-   * bill before usage can proceed. The client should prompt with selectCloudflareAccount().
-   */
-  needsAccountSelection?: boolean;
-};
-
-/** A Cloudflare account available to a connected user. Returned by `listCloudflareAccounts()`. */
-export type CloudflareAccountOption = {
-  accountId: string;
-  accountName: string;
-};
-
 /** Supported AI providers. */
-export type AiModelProvider = "openai" | "anthropic" | "google" | "cloudflare" | "ollama";
+export type AiModelProvider = "openai" | "anthropic" | "google" | "ollama";
 
 /** Information about the AI gateway configuration. Returned by `AuthenticatedApi.getAiConfig()`. */
 export type AiGatewayInfo = {
@@ -1159,24 +1098,23 @@ export type AiModelConfig = {
   apiToken: string;
 
   /**
-   * Cloudflare account ID owning the Workers AI deployment the token authorizes. Required for
-   * provider "cloudflare" (whose REST endpoint is account-scoped); unused for other providers.
+   * Account ID owning the model deployment the token authorizes, when the provider requires it.
    */
   accountId?: string;
 
   /**
    * URL of the API. If not specified, use the default for the provider. Overriding the URL is
-   * useful in order to use AI proxy products like Cloudflare's AI gateway, or even to use an
+   * useful in order to use AI proxy products, or even to use an
    * alternative provider that provides a compatible API.
    */
   apiUrl?: string;
 };
 
 /**
- * Workers AI adds the response cap to the prompt and rejects a request whose total exceeds the
- * model's window, so every Cloudflare model reserves this much of it for the response.
+ * Some providers add the response cap to the prompt and reject a request whose total exceeds the
+ * model's window, so those models reserve this much of it for the response.
  */
-export const WORKERS_AI_OUTPUT_LIMIT = 32768;
+export const DEFAULT_MODEL_OUTPUT_LIMIT = 32768;
 
 /**
  * Models offered in the picker. `contextWindow` is the maximum tokens one request may total.
@@ -1187,23 +1125,6 @@ export const SUGGESTED_MODELS: Record<
   AiModelProvider,
   Record<string, {name: string, contextWindow: number, outputLimit?: number}>
 > = {
-  "cloudflare": {
-    "@cf/moonshotai/kimi-k2.7-code": {
-      name: "Kimi K2.7 Code (Workers AI)", contextWindow: 262144,
-      outputLimit: WORKERS_AI_OUTPUT_LIMIT,
-    },
-    "@cf/zai-org/glm-5.2": {
-      name: "GLM 5.2 (Workers AI)", contextWindow: 262144, outputLimit: WORKERS_AI_OUTPUT_LIMIT,
-    },
-    "@cf/zai-org/glm-5.3-flash": {
-      name: "GLM 5.3 Flash (Workers AI)", contextWindow: 1048576,
-      outputLimit: WORKERS_AI_OUTPUT_LIMIT,
-    },
-    "@cf/deepseek-ai/deepseek-v4-pro-0813": {
-      name: "DeepSeek V4 Pro 0813 (Workers AI)", contextWindow: 1048576,
-      outputLimit: WORKERS_AI_OUTPUT_LIMIT,
-    },
-  },
   "anthropic": {
     // TODO: Include Fable -- but we need an admin option to disable it, since many orgs don't
     //   allow it for ZDR reasons. It's sort of overkill for building gadgets anyway.
@@ -1224,7 +1145,7 @@ export const SUGGESTED_MODELS: Record<
 };
 
 /**
- * Metadata about a workspace (one Overseer DO and everything in it). Includes everything needed
+ * Metadata about a workspace (one Overseer and everything in it). Includes everything needed
  * to render the workspace list on the front page.
  *
  * TODO(multi-gadget): Rename `WorkspaceMetadata`.
@@ -1450,7 +1371,7 @@ export type CommitIdentity = {
   /** Human-readable name, e.g. "Kenton Varda". */
   name: string;
 
-  /** Email address, e.g. "kenton@cloudflare.com" or "kenton@localhost". */
+  /** Email address, e.g. "ada@example.com" or "ada@localhost". */
   email: string;
 };
 
@@ -2542,7 +2463,7 @@ export type AiChatAuthorInfo = {
    */
   type: "user" | "agent" | "gadget";
 
-  /** Unique user identifier, e.g. "kenton@cloudflare.com" or "gpt-5.1-pro". */
+  /** Unique user identifier, e.g. "ada@example.com" or "gpt-5.1-pro". */
   id: string;
 
   /** Display name for author, e.g. "Kenton Varda" or "GPT" */
@@ -2770,8 +2691,7 @@ export type AiChatMessageBody = {
   type: "error";
   message: string;
   /**
-   * Optional machine-readable code so the client can react specially (e.g. "usage_limit" opens
-   * the "connect Cloudflare / add credits" modal instead of a generic error + retry).
+   * Optional machine-readable code so the client can react specially (e.g. "usage_limit").
    */
   code?: string;
 } | {

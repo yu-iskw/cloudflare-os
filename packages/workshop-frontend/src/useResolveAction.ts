@@ -1,5 +1,5 @@
 import { useCallback, useRef, type Dispatch, type SetStateAction } from 'react'
-import { useKumoToastManager } from '@cloudflare/kumo'
+import { useKumoToastManager } from '@gadgets/kumo'
 import type { RpcStub } from 'capnweb'
 import type { ActionState, Overseer } from '@gadgets/workshop-shared/api'
 

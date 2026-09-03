@@ -16,7 +16,7 @@ type TestObservabilityFields = {
 const obsContext = createObservabilityContext<TestObservabilityFields>();
 const createLogger = obsContext.createLogger;
 
-describe("worker logger", () => {
+describe("structured logger", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it("emits the message and structured context as one indexed object", () => {

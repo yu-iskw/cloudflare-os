@@ -6,7 +6,7 @@ import {
   Plus,
   SquaresFour,
 } from '@phosphor-icons/react'
-import { useKumoToastManager } from '@cloudflare/kumo'
+import { useKumoToastManager } from '@gadgets/kumo'
 import { useAuthenticatedApi } from '../../AuthContext'
 import type { GadgetMetadataWithTimestamps, OutputFormatOffer } from '@gadgets/workshop-shared/api'
 import { FormatGlyph } from '../format/FormatVisuals'

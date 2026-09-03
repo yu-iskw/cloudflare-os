@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
-import { DropdownMenu } from '@cloudflare/kumo'
+import { DropdownMenu } from '@gadgets/kumo'
 import { useAuthenticatedApi } from '../AuthContext'
 import { useAvatar } from '../useAvatar'
 import { MENU_CONTENT, MENU_ITEM, MENU_ITEM_DANGER, MENU_POSITIONER_STYLE } from './menuStyles'

@@ -163,7 +163,7 @@ export const slackClient = {
 }`,
   },
   {
-    name: 'wrangler.toml',
+    name: 'sandbox.toml',
     language: 'toml',
     content: `name = "slack-summarizer"
 main = "src/worker.ts"
@@ -219,8 +219,8 @@ export const sampleMessages: ChatMessage[] = [
         status: 'complete',
         duration: 1240,
         icon: 'file',
-        input: { name: 'slack-summarizer', runtime: 'cloudflare-workers' },
-        output: 'Created project with Hono framework, TypeScript, and wrangler config',
+        input: { name: 'slack-summarizer', runtime: 'sandbox' },
+        output: 'Created project with Hono framework, TypeScript, and Cloud Run config',
       },
       {
         id: 'tc2',
@@ -311,12 +311,12 @@ export const sampleMessages: ChatMessage[] = [
       {
         id: 'tc9',
         name: 'deploy_worker',
-        label: 'Deploying to Cloudflare',
+        label: 'Deploying to Cloud Run',
         status: 'complete',
         duration: 3200,
         icon: 'deploy',
         input: { name: 'slack-summarizer', routes: ['/api/*'] },
-        output: 'Deployed to slack-summarizer.workers.dev (200ms cold start)',
+        output: 'Deployed to slack-summarizer.example.com',
       },
       {
         id: 'tc10',

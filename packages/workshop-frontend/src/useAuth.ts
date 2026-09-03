@@ -3,7 +3,7 @@ import { RpcStub } from 'capnweb'
 import { PublicApi, AuthenticatedApi } from '@gadgets/workshop-shared/api'
 import { setReportedUserId } from './errorReporting'
 
-const CF_ACCESS_MODE = import.meta.env.VITE_CF_ACCESS_MODE === 'true'
+const IAP_MODE = import.meta.env.VITE_IAP_MODE === 'true'
 
 interface AuthState {
   token: string | null
@@ -12,7 +12,7 @@ interface AuthState {
   error: string | null
 }
 
-export { CF_ACCESS_MODE }
+export { IAP_MODE }
 
 export function useAuth(publicApi: RpcStub<PublicApi>) {
   const [authState, setAuthState] = useState<AuthState>({
@@ -31,7 +31,7 @@ export function useAuth(publicApi: RpcStub<PublicApi>) {
    * Names the signed-in user on error reports, for as long as this stub is the current one.
    *
    * Keyed on the stub rather than called from each authenticate path, so it covers however the
-   * session was established — stored token, inline login, or CF Access. This is why the claim lives
+   * session was established — stored token, inline login, or IAP. This is why the claim lives
    * in the hook and not in `AuthProvider`: the public blueprint page renders outside that provider
    * and logs in inline, so reports from the rest of its session would otherwise name nobody.
    *
@@ -56,8 +56,8 @@ export function useAuth(publicApi: RpcStub<PublicApi>) {
   }, [authState.authenticatedApi])
 
   useEffect(() => {
-    if (CF_ACCESS_MODE) {
-      authenticateWithCfAccess()
+    if (IAP_MODE) {
+      authenticateWithIap()
     } else {
       const storedToken = localStorage.getItem('authToken')
       if (storedToken) {
@@ -73,7 +73,7 @@ export function useAuth(publicApi: RpcStub<PublicApi>) {
     }
   }, [publicApi])
 
-  const authenticateWithCfAccess = () => {
+  const authenticateWithIap = () => {
     setAuthState(prev => {
       if (prev.authenticatedApi) {
         prev.authenticatedApi[Symbol.dispose]()
@@ -81,10 +81,9 @@ export function useAuth(publicApi: RpcStub<PublicApi>) {
       return { ...prev, authenticatedApi: null, isLoading: true, error: null }
     })
 
-    // Use promise pipelining - no need to await. The CF Access JWT is already attached
-    // to the request by the browser (injected by the Access service worker/cookie), so
-    // the server validates it and returns an authenticated stub immediately.
-    const authenticatedApi = publicApi.authenticateFromCfAccess()
+    // Use promise pipelining - no need to await. IAP already attached the JWT
+    // (`x-goog-iap-jwt-assertion`) so the kernel validates it and returns a stub.
+    const authenticatedApi = publicApi.authenticateFromIap()
     setAuthState({
       token: null,
       authenticatedApi,
@@ -125,8 +124,8 @@ export function useAuth(publicApi: RpcStub<PublicApi>) {
   const logout = () => {
     setReportedUserId(undefined)
 
-    if (CF_ACCESS_MODE) {
-      window.location.assign('/cdn-cgi/access/logout')
+    if (IAP_MODE) {
+      window.location.assign('/')
       return
     }
 

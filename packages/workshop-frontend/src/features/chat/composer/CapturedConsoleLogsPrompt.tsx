@@ -1,4 +1,4 @@
-import { Tooltip } from "@cloudflare/kumo";
+import { Tooltip } from "@gadgets/kumo";
 import { X } from "@phosphor-icons/react";
 
 type CapturedConsoleLogsPromptProps = {

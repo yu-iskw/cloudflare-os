@@ -29,7 +29,7 @@ function stubPublicApi(author?: AiChatAuthorInfo): RpcStub<PublicApi> {
   }
   return {
     authenticate: () => authenticated,
-    authenticateFromCfAccess: () => authenticated,
+    authenticateFromIap: () => authenticated,
   } as unknown as RpcStub<PublicApi>
 }
 
@@ -52,7 +52,7 @@ function deferredPublicApi(): {
     return { whoami: () => pending, [Symbol.dispose]: () => {} }
   }
   return {
-    api: { authenticate, authenticateFromCfAccess: authenticate } as unknown as RpcStub<PublicApi>,
+    api: { authenticate, authenticateFromIap: authenticate } as unknown as RpcStub<PublicApi>,
     release: (nth, author) => releases[nth](author),
   }
 }
@@ -113,7 +113,7 @@ describe('useAuth error reporting identity', () => {
   })
 
   it('names the user when CF Access authenticates without a token', async () => {
-    vi.stubEnv('VITE_CF_ACCESS_MODE', 'true')
+    vi.stubEnv('VITE_IAP_MODE', 'true')
     vi.resetModules()
     // Both imports must come from the reset registry, or the assertion would watch a mock instance
     // that the freshly imported hook never calls.

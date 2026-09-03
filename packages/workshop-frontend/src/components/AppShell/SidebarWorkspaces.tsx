@@ -17,7 +17,7 @@ import {
   Star,
 } from '@phosphor-icons/react'
 import { openCommandPalette } from './commandPaletteBus'
-import { useKumoToastManager } from '@cloudflare/kumo'
+import { useKumoToastManager } from '@gadgets/kumo'
 import type { RpcStub } from 'capnweb'
 import {
   GadgetMetadataWithTimestamps,

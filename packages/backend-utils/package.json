@@ -1,7 +1,7 @@
 {
   "name": "@gadgets/backend-utils",
   "version": "1.0.0",
-  "description": "Shared Worker-side libraries; not a standalone deployable Worker.",
+  "description": "Shared Cloud Run libraries; not a standalone service.",
   "type": "module",
   "exports": {
     "./logger": {
@@ -31,8 +31,6 @@
     "@gadgets/error-reporting": "workspace:*"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "catalog:",
-    "@cloudflare/workers-types": "^5.20260825.1",
     "@gadgets/scripts": "workspace:*",
     "vitest": "catalog:"
   }

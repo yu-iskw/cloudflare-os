@@ -1,4 +1,4 @@
-/** A value that Workers Logs can represent as structured log data. */
+/** A value that structured logs can represent. */
 export type LogValue =
   | string
   | number

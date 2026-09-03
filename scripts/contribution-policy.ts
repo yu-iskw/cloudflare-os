@@ -243,5 +243,5 @@ ${details}
 
 Please update the pull request to meet these automatic checks, then reopen it. Passing these checks does not guarantee acceptance; maintainers still determine whether a change is obviously correct and trivially verifiable.
 
-If an exception is appropriate, a maintainer can apply the \`${OVERRIDE_LABEL}\` label before reopening the pull request. See the [contribution guidelines](https://github.com/cloudflare/cloudflare-os/blob/main/CONTRIBUTING.md) for details.`;
+If an exception is appropriate, a maintainer can apply the \`${OVERRIDE_LABEL}\` label before reopening the pull request. See the contribution guidelines in CONTRIBUTING.md for details.`;
 }

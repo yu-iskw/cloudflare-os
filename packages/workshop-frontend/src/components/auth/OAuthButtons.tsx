@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { RpcStub } from 'capnweb'
 import { PublicApi, AuthVendorInfo } from '@gadgets/workshop-shared/api'
-import { Button, Banner } from '@cloudflare/kumo'
+import { Button, Banner } from '@gadgets/kumo'
 
 interface OAuthButtonsProps {
   rpcStub: RpcStub<PublicApi>

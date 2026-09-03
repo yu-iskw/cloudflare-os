@@ -26,7 +26,7 @@ describe("registry policy", () => {
     );
   });
 
-  it("configures the @cloudflare scope, and nothing else, in the root .npmrc", () => {
+  it("keeps the root .npmrc on the public npm registry", () => {
     const directives = npmrc
       .split("\n")
       .map((line) => line.trim())
@@ -34,10 +34,8 @@ describe("registry policy", () => {
 
     assert.deepEqual(
       directives,
-      [`@cloudflare:registry=${PUBLIC_REGISTRY}`],
-      "the root .npmrc must contain exactly the @cloudflare scope pin; it is what keeps a " +
-        "resolving install from rewriting pnpm-lock.yaml to a registry this repository's " +
-        "consumers cannot reach.",
+      [`registry=${PUBLIC_REGISTRY}`],
+      "the root .npmrc must pin the public npm registry so forks, CI and contributors resolve the same lockfile.",
     );
   });
 });

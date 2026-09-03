@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => ({
   toast: vi.fn<(toast: unknown) => void>(),
 }))
 
-vi.mock('@cloudflare/kumo', () => {
+vi.mock('@gadgets/kumo', () => {
   const DropdownMenu = Object.assign(
     ({ children, onOpenChange }: {
       children: ReactNode

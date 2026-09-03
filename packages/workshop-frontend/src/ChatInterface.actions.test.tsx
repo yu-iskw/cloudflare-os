@@ -11,8 +11,8 @@ vi.stubGlobal('ResizeObserver', class {
   disconnect() {}
 })
 
-vi.mock('@cloudflare/kumo', async (importOriginal) => {
-  const actual = await importOriginal() as typeof import('@cloudflare/kumo')
+vi.mock('@gadgets/kumo', async (importOriginal) => {
+  const actual = await importOriginal() as typeof import('@gadgets/kumo')
   const Pass = ({ children }: { children?: React.ReactNode }) => children ?? null
   const Null = () => null
   const parts = new Proxy(Pass, {

@@ -6,7 +6,7 @@
 //
 // Returns null when the deployment promotes no formats, leaving the menu untouched.
 
-import { DropdownMenu } from '@cloudflare/kumo'
+import { DropdownMenu } from '@gadgets/kumo'
 import type { OutputFormatOffer } from '@gadgets/workshop-shared/api'
 import { FormatGlyph } from './FormatVisuals'
 import { useOutputFormats } from './useOutputFormats'

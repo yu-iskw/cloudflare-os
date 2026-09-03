@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Dialog, DropdownMenu, useKumoToastManager } from '@cloudflare/kumo'
+import { Dialog, DropdownMenu, useKumoToastManager } from '@gadgets/kumo'
 import {
   MagnifyingGlass,
   DotsThreeVertical,

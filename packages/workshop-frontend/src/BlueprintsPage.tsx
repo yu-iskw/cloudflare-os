@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useKumoToastManager } from "@cloudflare/kumo";
+import { useKumoToastManager } from "@gadgets/kumo";
 import {
   Blueprint as BlueprintIcon,
   BookOpen,

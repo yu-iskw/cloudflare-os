@@ -84,3 +84,6 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Assert tracked tree has no forbidden vendor token
+        run: pnpm assert-clean-tree

@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useEffect, useRef } from 'react'
-import { DropdownMenu, useKumoToastManager } from '@cloudflare/kumo'
+import { DropdownMenu, useKumoToastManager } from '@gadgets/kumo'
 import { useAuthenticatedApi } from '../AuthContext'
 import {
   AiChatAuthorInfo,

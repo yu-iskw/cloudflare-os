@@ -1,4 +1,4 @@
-import { Switch, Tooltip } from '@cloudflare/kumo'
+import { Switch, Tooltip } from '@gadgets/kumo'
 
 interface HookToggleProps {
   enabled: boolean

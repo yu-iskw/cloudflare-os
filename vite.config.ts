@@ -38,12 +38,10 @@ export default defineConfig({
       // which the import resolver reports as "no default export".
       'import/default': 'off',
 
-      // Side-effect imports are used deliberately: CSS (`./styles.css`) and the
-      // Workers runtime registration import (`cloudflare:workers`).
+      // Side-effect imports are used deliberately: CSS (`./styles.css`).
       'import/no-unassigned-import': 'off',
 
-      // Comment-only placeholder/reference modules are kept intentionally
-      // (e.g. App.tsx, gatekeeper-cloudflare/src/types.d.ts).
+      // Comment-only placeholder/reference modules are kept intentionally.
       'unicorn/no-empty-file': 'off',
 
       // Conflicts with our convention of prefixing intentionally-unused bindings
@@ -118,16 +116,9 @@ export default defineConfig({
         },
       },
       {
-        // Cloudflare Workers backends: worker/service-worker global scope.
-        files: [
-          'packages/workshop-backend/**/*.ts',
-          'packages/router/**/*.ts',
-          'packages/gatekeeper-*/src/**/*.ts',
-          'packages/workshop-shared/**/*.ts',
-          'packages/typed-storage/**/*.ts',
-        ],
+        files: ['packages/gcp-*/**/*.ts', 'packages/workshop-shared/**/*.ts'],
         env: {
-          serviceworker: true,
+          node: true,
           es2024: true,
         },
       },

@@ -1,5 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react'
-import { useKumoToastManager } from '@cloudflare/kumo'
+import { useKumoToastManager } from '@gadgets/kumo'
 import { DownloadSimple, List } from '@phosphor-icons/react'
 import { Overseer, WorkpieceId } from '@gadgets/workshop-shared/api'
 import type { CodeChange, FileChange, TextChange } from '@gadgets/workshop-shared/code-change'

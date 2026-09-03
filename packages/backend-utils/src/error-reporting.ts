@@ -1,11 +1,9 @@
-import { env, waitUntil, type WorkerEntrypoint } from "cloudflare:workers";
 import { createLogger } from "./logger.js";
 import {
   MAX_ATTRIBUTE_KEYS,
   MAX_STRING_CHARS,
   serializeException,
   type ErrorEventV1,
-  type ErrorReporterProps,
   type ErrorReportOptions,
 } from "@gadgets/error-reporting";
 
@@ -24,18 +22,9 @@ type ErrorReportingLogFields = { failureSite?: string };
 
 const logger = createLogger<ErrorReportingLogFields>({ component: "backend-utils.error-reporting" });
 
-/** Native Workers RPC capability implemented by the private Reporter Worker. */
-export interface ErrorReporter extends WorkerEntrypoint<unknown, ErrorReporterProps> {
+/** Optional HTTP reporter used when `ERROR_REPORTER_URL` is set. */
+export interface ErrorReporter {
   report(event: ErrorEventV1): Promise<void>;
-}
-
-declare global {
-  namespace Cloudflare {
-    interface Env {
-      /** Optional private error Reporter service binding. */
-      ERROR_REPORTER?: Service<ErrorReporter>;
-    }
-  }
 }
 
 type Scalar = string | number | boolean | null;
@@ -67,19 +56,8 @@ function createErrorEvent(
 }
 
 /**
- * Reports an exception to the private Reporter without allowing reporting failures to affect
- * the caller. A no-op when the optional `ERROR_REPORTER` binding is absent (local dev and
- * deployments without an Issue destination).
- *
- * Unlike recordAnalytics() (which threads ctx/env through every call site), this reads the
- * ambient `env` and `waitUntil` from `cloudflare:workers` so a single line reports from any
- * Worker, DO method, or alarm without plumbing arguments to each capture site.
- *
- * Lifetime: `report()` is dispatched eagerly, so the outbound RPC is in flight before
- * `waitUntil` is consulted. In a stateless Worker `waitUntil` extends the event past the
- * response so the RPC can finish. In a Durable Object `waitUntil` has no effect, but the
- * in-flight RPC is pending I/O that keeps the object alive until it settles. Delivery holds
- * in both contexts; failures are logged at debug rather than swallowed silently.
+ * Reports an exception to an optional HTTP reporter without allowing reporting failures to
+ * affect the caller. A no-op when `ERROR_REPORTER_URL` is unset.
  *
  * `attributes` records ambient context; spread an observability context's `get()` result and
  * augment it inline when the capture site has additional fields.
@@ -89,14 +67,17 @@ export function reportIssue(
     caught: unknown,
     options?: ErrorReportOptions): void {
   try {
-    if (!env.ERROR_REPORTER) return;
+    const url = process.env.ERROR_REPORTER_URL;
+    if (!url) return;
     const event = createErrorEvent(failureSite, caught, options);
-    const dispatch = env.ERROR_REPORTER.report(event);
-    waitUntil(dispatch.catch((error) =>
+    void fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(event),
+    }).catch((error) =>
       logger.debug("error report dispatch failed",
-        { event: "error_report.dispatch.failed", failureSite, error })));
+        { event: "error_report.dispatch.failed", failureSite, error }));
   } catch (error) {
-    // Reporting must never disturb the caller; record the setup failure and move on.
     logger.debug("error report setup failed",
       { event: "error_report.setup.failed", failureSite, error });
   }

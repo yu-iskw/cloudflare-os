@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Dialog, Button, Input, Select, SensitiveInput, Collapsible, useKumoToastManager } from '@cloudflare/kumo'
+import { Dialog, Button, Input, Select, SensitiveInput, Collapsible, useKumoToastManager } from '@gadgets/kumo'
 import { AiChatAuthorInfo, AiModelConfig, AiModelProvider, AiGatewayInfo, SUGGESTED_MODELS } from '@gadgets/workshop-shared/api'
 import { RpcStub } from 'capnweb'
 import { AuthenticatedApi } from '@gadgets/workshop-shared/api'
@@ -20,7 +20,6 @@ const PROVIDER_LABELS: Record<AiModelProvider, string> = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
   google: 'Google',
-  cloudflare: 'Cloudflare Workers AI',
   ollama: 'Ollama',
 }
 
@@ -29,7 +28,6 @@ const API_TOKEN_PLACEHOLDERS: Record<AiModelProvider, string> = {
   anthropic: 'sk-ant-...',
   openai: 'sk-...',
   google: 'AIza...',
-  cloudflare: 'Cloudflare API token',
   ollama: '(optional)',
 }
 
@@ -160,15 +158,10 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
     }
 
     const isOllama = selection?.provider === 'ollama'
-    const isCloudflare = selection?.provider === 'cloudflare'
     const showCredentials = !gatewayMode
 
     if (showCredentials && selection && !isOllama && !apiToken.trim()) {
       newErrors.apiToken = 'Please enter your API token'
-    }
-
-    if (showCredentials && isCloudflare && !accountId.trim()) {
-      newErrors.accountId = 'Please enter your Cloudflare account ID'
     }
 
     if (showCredentials && isOllama && !apiUrl.trim()) {
@@ -217,7 +210,6 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
   const showCustomFields = selection?.type === 'custom'
   const example = selection ? exampleModel(selection.provider) : null
   const isOllama = selection?.provider === 'ollama'
-  const isCloudflare = selection?.provider === 'cloudflare'
   const showCredentials = !gatewayMode
 
   // Group options by provider for rendering with visual separators.
@@ -294,19 +286,6 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
             </>
           )}
 
-          {/* Cloudflare account ID (the Workers AI REST endpoint is account-scoped) */}
-          {showCredentials && isCloudflare && (
-            <Input
-              label="Cloudflare Account ID"
-              placeholder="e.g., 0123456789abcdef0123456789abcdef"
-              description="The Cloudflare account to bill for Workers AI usage"
-              value={accountId}
-              onChange={(e) => { setAccountId(e.target.value); setErrors(prev => ({ ...prev, accountId: '' })) }}
-              error={errors.accountId}
-              variant={errors.accountId ? 'error' : 'default'}
-            />
-          )}
-
           {/* API Token */}
           {showCredentials && selection && (
             <SensitiveInput
@@ -315,8 +294,6 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
               description={
                 isOllama
                   ? 'Optional for local Ollama access'
-                  : isCloudflare
-                  ? 'An API token with Workers AI Read + Edit permissions (in the dashboard: Workers AI > Use REST API > Create a Workers AI API Token)'
                   : `Your ${PROVIDER_LABELS[selection.provider]} API token for billing`
               }
               value={apiToken}
@@ -339,8 +316,8 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
             />
           )}
 
-          {/* Advanced Settings for non-Ollama, non-Cloudflare providers */}
-          {showCredentials && selection && !isOllama && !isCloudflare && (
+          {/* Advanced Settings for non-Ollama providers */}
+          {showCredentials && selection && !isOllama && (
             <Collapsible.Root
               open={advancedOpen}
               onOpenChange={setAdvancedOpen}
@@ -350,7 +327,7 @@ export default function AddModelModal({ visible, onCancel, onSuccess, authentica
                 <Input
                   label="API URL"
                   placeholder="https://..."
-                  description="Override the default API endpoint (useful for proxies like Cloudflare AI Gateway)"
+                  description="Override the default API endpoint"
                   value={apiUrl}
                   onChange={(e) => setApiUrl(e.target.value)}
                 />

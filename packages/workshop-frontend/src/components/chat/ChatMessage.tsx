@@ -1,4 +1,4 @@
-import { Loader } from '@cloudflare/kumo'
+import { Loader } from '@gadgets/kumo'
 import { Hexagon } from '@phosphor-icons/react'
 import type { ChatMessage as ChatMessageType } from '../../data/chat'
 import ToolCallCard from './ToolCallCard'

@@ -18,6 +18,9 @@
   "peerDependencies": {
     "react": "^19.0.0"
   },
+  "dependencies": {
+    "react": "^19.2.8"
+  },
   "devDependencies": {
     "@types/react": "^19.1.13",
     "typescript": "catalog:"

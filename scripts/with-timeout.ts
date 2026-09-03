@@ -8,10 +8,7 @@
 // (`vp run --help` offers only concurrency flags, and `timeout` appears nowhere in its docs), and
 // vitest's `testTimeout`/`hookTimeout` are enforced *inside* the test worker, so they die with it;
 // the one process-level watchdog, `teardownTimeout`, is armed after the run resolves and therefore
-// never arms when the run is what hangs. Underneath that,
-// `@cloudflare/vitest-pool-workers` imports Miniflare without passing `onWorkerdCrashRestart`, so a
-// workerd that dies mid-run leaves the pool awaiting a reply that will never arrive. The result is
-// an unbounded local hang, and in CI an anonymous job-level kill that names no culprit.
+// never arms when the run is what hangs.
 //
 // Silence is the primary detector rather than wall-clock: a healthy `vitest run` prints a line per
 // completed test file, and a wedged one goes quiet. The total cap is the backstop for a command

@@ -1,5 +1,5 @@
-import { Badge } from '@cloudflare/kumo'
-import { Text } from '@cloudflare/kumo'
+import { Badge } from '@gadgets/kumo'
+import { Text } from '@gadgets/kumo'
 import { Circle } from '@phosphor-icons/react'
 import { sampleDataRows } from '../../data/chat'
 
