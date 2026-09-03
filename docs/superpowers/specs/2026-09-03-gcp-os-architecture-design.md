@@ -9,11 +9,11 @@ Ledger depth: `docs/superpowers/specs/2026-09-03-alloydb-spanner-firebase.md`.
 
 ## Goal
 
-Host the Gadgets Workshop product on Google Cloud with no Cloudflare runtime: same sandboxed personal gadgets, Code Mode agent, and capability-based Gatekeepers.
+Host Company OS on Google Cloud: sandboxed personal gadgets, a Code Mode agent, capability-based Gatekeepers, and **one** GitHub Gatekeeper. Persist capability **records**, never live RPC stubs.
 
 ## Category errors to avoid
 
-Gemini Enterprise Agent Platform is an enterprise agent fleet. Cloudflare OS is an OS for private apps. Replacing the OS with Agent Runtime produces a chatbot, not a port.
+Gemini Enterprise Agent Platform is an enterprise agent fleet. Company OS is an OS for private apps. Replacing the OS with Agent Runtime produces a chatbot, not this product.
 
 Cloud Run is not one primitive. The **service** is the request-driven server. **Nested sandboxes** (`--sandbox-launcher`) are a second product inside that server. There is no SKU named Cloud Run servers. Cloud Run Instances (preview singletons) are a third thing. The GitHub repo `GoogleCloudPlatform/cloud-run-sandbox` is a fourth, unofficial, `runsc` WebSocket sample.
 
@@ -26,7 +26,7 @@ Cloud Run is not one primitive. The **service** is the request-driven server. **
                       |
          Cloud Run Service  (the server)
          gen2, --sandbox-launcher
-         SPA + /api Cap'n Web + gatekeeper HTTP
+         SPA + /api Cap'n Web + GitHub Gatekeeper HTTP
                       |
          +------------+------------------+
          |            |                  |
@@ -42,44 +42,44 @@ Cloud Run is not one primitive. The **service** is the request-driven server. **
 
 | Plane | GCP product | Holds |
 | --- | --- | --- |
-| Trusted server | Cloud Run **Service** | Router, SPA, kernel RPC, Gatekeeper OAuth |
+| Trusted server | Cloud Run **Service** | Router, SPA, kernel RPC, GitHub Gatekeeper OAuth |
 | Untrusted snippets | Cloud Run **nested sandboxes** (`sandbox do`) | Code Mode / `executeCode` |
 | System of record | Cloud SQL PostgreSQL | Users, workspaces, chat, git **pointers**, capability records |
 | Git / blueprint bytes | Cloud Storage | Loose git objects, archives, screenshots |
 | Live fan-out | Memorystore | Collaboration after replica failover |
 | Human login | Identity Platform + IAP | Not a data plane; agents stay SPIFFE |
-| Addressable gadgets (optional) | GKE Agent Sandbox | Long-lived inbound HTTP if Facets demand it |
-| Wakeups | Cloud Tasks / Cloud Scheduler | Durable Object `alarm()` analog |
+| Addressable gadgets (optional) | GKE Agent Sandbox | Long-lived inbound HTTP if gadgets need their own identity |
+| Wakeups | Cloud Tasks / Cloud Scheduler | Durable per-workspace wake |
 | Governance | Agent Platform | Models, Agent Identity, Gateway, Armor |
+| GitHub connector | Cloud Run service (`gcp-gatekeeper-github`) | OAuth, observations, queued writes |
 
 ## Scored options
 
 | Approach | Score | Feasibility | Performance | Maintainability | Complexity |
 | --- | --- | --- | --- | --- | --- |
 | B Cloud Run–first Hybrid (Service + nested sandbox; GKE only if needed) | 90 | High | `do` ~500 ms | One family for MVP | Medium |
-| D Cloud Run Service + nested sandboxes only | 72 | High | Same | No cluster | Medium; Facets are DIY |
+| D Cloud Run Service + nested sandboxes only | 72 | High | Same | No cluster | Medium; inbound gadgets are DIY |
 | A GKE-native (kernel also in-cluster) | 82 | High | Best inbound gadgets | Cluster ops | Medium-high |
-| Isolate pool on GKE (rebuild WorkerLoader) | 70 | Medium | Closest to isolates | You own V8/Wasm | High |
+| Isolate pool on GKE | 70 | Medium | Closest to in-process isolates | You own V8/Wasm | High |
 | C Agent Platform-first rewrite | 48 | High | Fine for chat | Loses gadgets | Low for chat |
 | Cloud Run Instances as actors | 38 | High for HTTP | Poor | Quota 100, 7-day restart | Low, wrong |
-| workerd on GKE | 0 | N/A | N/A | Forbidden | N/A |
 
-## Why the first Cloud Run pass was incomplete
+## Nested sandboxes as a first-class executor
 
-It scored “Cloud Run only” as 38 by treating Services as replica pools and Instances as fake Durable Objects. It did not treat **nested sandboxes** as a first-class executor:
+A Cloud Run Service is a replica pool; it cannot be a unique workspace actor. Nested sandboxes inside that service **can** be the Code Mode executor without GKE:
 
 - Deny-by-default egress (stronger than GKE Agent Sandbox’s default public internet).
 - No env, secrets, or metadata inheritance.
 - `sandbox do` is the `executeCode` analog.
 - `sandbox run --detach` exists for long-lived processes, but **no per-sandbox URL**.
 
-The service still cannot be a unique workspace actor. The sandbox still cannot be a Facet with inbound identity. Together they **can** be the kernel server plus Code Mode without GKE.
+The sandbox still cannot be an inbound gadget with its own public identity. Together, service + `sandbox do` **are** the kernel server plus Code Mode.
 
 ## Open forks before implementation
 
 1. Gadget host: GKE Agent Sandbox vs Cloud Run `sandbox run --detach` plus host mux vs in-process isolate pool.
 
-Settled this revision: Overseer uniqueness on the Cloud Run path is a **Postgres lease**; `executeCode` is `sandbox do`; v1 ledger is **Cloud SQL PostgreSQL** (not Spanner, not Firestore). AlloyDB is a same-protocol upgrade. Spanner only if multi-region strong writes become real. Identity Platform for humans; Firebase SQL Connect is not the kernel API.
+Settled this revision: Overseer uniqueness on the Cloud Run path is a **Postgres lease**; `executeCode` is `sandbox do`; v1 ledger is **Cloud SQL PostgreSQL** (not Spanner, not Firestore). AlloyDB is a same-protocol upgrade. Spanner only if multi-region strong writes become real. Identity Platform for humans; Firebase SQL Connect is not the kernel API. Capability records only — never stored RPC stubs. One GitHub Gatekeeper.
 
 ## Not in this change
 

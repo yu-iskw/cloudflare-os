@@ -4,7 +4,7 @@ Date: 2026-09-03
 Status: research only — no implementation
 Companion to `docs/plans/2026-09-03-001-architecture-gcp-os-plan.md`
 
-The first architecture pass treated Cloud Run as “HTTP replicas + optional Instances.” That missed a 2026 nested product. This note is the Cloud Run ecosystem, with depth on the **service** (the request-driven server) and **sandboxes** (the in-instance untrusted executor).
+Cloud Run is a family. This note covers every first-class compute box, with depth on the **service** (the request-driven server) and **sandboxes** (the in-instance untrusted executor).
 
 There is **no** Admin API resource named Cloud Run servers. The server is a **Cloud Run service**.
 
@@ -25,9 +25,9 @@ Gen1 wraps the **whole instance** in gVisor. Gen2 is a microVM with a full Linux
 
 ## Cloud Run service = the server
 
-A service is a regional, multi-zone replica set behind a stable URL. It is the right host for the Workshop origin: SPA, `/api` Cap’n Web, Gatekeeper OAuth.
+A service is a regional, multi-zone replica set behind a stable URL. It is the right host for the Workshop origin: SPA, `/api` Cap’n Web, GitHub Gatekeeper OAuth.
 
-It is **not** a Durable Object:
+It is **not** a unique workspace actor:
 
 - Requests for one `workspaceId` can land on any replica.
 - Session affinity is a cookie, best-effort, broken on scale/CPU/death.
@@ -35,7 +35,7 @@ It is **not** a Durable Object:
 - WebSockets are long HTTP requests, **max 60 minutes**, reconnect required. Do not enable HTTP/2 end-to-end with WebSockets.
 - Idle replicas die unless min instances + instance-based billing keep CPU allocated.
 
-What a service **can** do that the first pass underweighted:
+What a service **can** do as the kernel:
 
 - `--sandbox-launcher` makes **this replica** a sandbox supervisor.
 - Min instances + `--no-cpu-throttling` keep nested detached sandboxes alive **on that replica only**.
@@ -43,7 +43,7 @@ What a service **can** do that the first pass underweighted:
 - Volumes (GCS FUSE, NFS, in-memory) persist host files; bind-mount them into sandboxes with `--mount`.
 - Service-level egress (Direct VPC, VPC-SC) is revision-wide. Per-gadget deny is the **sandbox** network, not org policy.
 
-`min=max=1` is one replica for the **whole service**, not one replica per workspace.
+`min=max=1` is one replica for the **whole service**, not one replica per workspace. Workspace uniqueness is a **Postgres lease** in Cloud SQL, not replica pinning.
 
 ## Cloud Run sandboxes = nested untrusted compute
 
@@ -59,7 +59,7 @@ This is **not** GKE Agent Sandbox, **not** Agent Platform Code Execution, and **
 
 ADK `CloudRunSandboxCodeExecutor` is **only** the `do` path (local, stateless). ComputeSDK can be ephemeral or `executionMode: 'stateful'` over an HTTP gateway in front of the same CLI. ComputeSDK `getUrl()` is **unsupported**: the CLI does not expose per-sandbox ports.
 
-### Isolation (the WorkerLoader analog)
+### Isolation
 
 Documented and independently reproduced:
 
@@ -70,13 +70,13 @@ Documented and independently reproduced:
 - Host rootfs is **read-only** in the box; `--write` is a tmpfs overlay lost on delete unless tar/mount.
 - Nested gVisor is strongly reported by operators; official pages say “highly optimized sandbox,” not the word gVisor.
 
-That is a closer `globalOutbound: null` analog than GKE Agent Sandbox, whose default policy **allows public internet**.
+That is a closer deny-egress analog than GKE Agent Sandbox, whose default policy **allows public internet**.
 
-Gaps vs WorkerLoader:
+Gaps vs an in-process isolate:
 
-- Process-level, not a V8 isolate that exports `class Gadget extends DurableObject`.
-- No capability bindings / `ctx.props` / stored RPC stubs. You pass `--env` or talk through the host.
-- `--allow-egress` cannot say “only the Gmail gatekeeper.” The host must proxy capability calls.
+- Process-level, not a V8 isolate that exports a gadget class.
+- No capability bindings or stored RPC stubs. You pass `--env` or talk through the host.
+- `--allow-egress` cannot say “only the GitHub Gatekeeper.” The host must proxy capability calls.
 - No public URL. Ingress stays on the **host** service.
 - Host↔sandbox bidirectional streams (Unix socket, vsock, localhost) are **unverified**. `exec` is request/response stdin/stdout.
 - Box dies when the host replica scales to zero or is replaced. No hibernation.
@@ -85,22 +85,22 @@ Gaps vs WorkerLoader:
 
 A gadget that is “run this JS snippet and return” maps to `sandbox do`. That is the executeCode story, and it should live here, not on GKE.
 
-A gadget that is “long-lived Cap’n Web Durable Object with SQLite” does **not** map. You would have to:
+A gadget that is “long-lived Cap’n Web server with local SQL” does **not** map. You would have to:
 
 1. `sandbox run gadget-$id --detach` with deny-egress.
 2. Invent a host mux from the Workshop WebSocket into that process (unverified connectivity).
 3. Persist overlay to GCS via `--mount` / tar, because replica death kills RAM and local disk.
 4. Pin the client to the replica that holds the box (best-effort affinity), or accept restart.
 
-That is a custom Facets layer on Cloud Run, not a platform feature. GKE Agent Sandbox still wins for **addressable inbound** gadget servers (`X-Sandbox-ID` router).
+That is a custom inbound-gadget layer on Cloud Run, not a platform feature. GKE Agent Sandbox still wins for **addressable inbound** gadget servers (`X-Sandbox-ID` router).
 
-## Recommended Cloud Run split (revised)
+## Recommended Cloud Run split
 
 ```text
 Cloud Run Service  (the server, gen2, --sandbox-launcher,
                     min instances, instance-based billing, IAP)
    │
-   ├─ trusted kernel: Cap'n Web /api, capability records, Gatekeeper HTTP
+   ├─ trusted kernel: Cap'n Web /api, capability records, GitHub Gatekeeper HTTP
    ├─ sandbox do:     executeCode  (deny-egress, no metadata)
    └─ optional sandbox run --detach: experimental gadget processes
                     (host must proxy; no per-sandbox URL)

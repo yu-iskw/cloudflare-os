@@ -4,24 +4,24 @@ Date: 2026-09-03
 Status: research only — no implementation
 Companion to `docs/plans/2026-09-03-001-architecture-gcp-os-plan.md`
 
-The kernel today is Durable Object KV + `transactionSync` + optional SQLite, including a per-workspace **git object database**. That is actor-local ACID, not a globally distributed SQL problem. Starting on Spanner is more product than the v1 topology needs — complexity and unused guarantees, not only invoice.
+The kernel ledger is per-workspace ACID (users, chats, capability records, git **pointers**), not a globally distributed SQL problem. Starting on Spanner is more product than the v1 topology needs — complexity and unused guarantees, not only invoice. Git **blobs** live in Cloud Storage.
 
 ## What the ledger must do
 
-Mapped from `packages/typed-storage`, `packages/workshop-backend/src/git-store.ts`, and the Durable Object classes in `workshop-backend`.
+Mapped from `packages/gcp-ledger`, `packages/gcp-git`, and `packages/gcp-kernel`.
 
 | Need | Why |
 | --- | --- |
-| Per-workspace atomic multi-key updates | `typedStorage.transaction` is `storage.transactionSync`. Record + unique/non-unique indexes, chat append, capability grants, and schedule enable all assume one atomic write. |
+| Per-workspace atomic multi-key updates | Record + unique/non-unique indexes, chat append, capability grants, and schedule enable all assume one atomic write. |
 | Read-your-writes in one turn | Agent/chat assume no replica lag inside a turn. |
-| Workspace lease / single-writer | Cloud Run Service replicas are not unique actors. `SELECT FOR UPDATE` or `pg_advisory_lock` stands in for DO identity. |
-| Prefix/list by workspace | typed-storage collections are prefix-keyed views; SQL tables + indexes replace that. |
-| Git **blobs** out of the DB | Overseer `GitStore` holds zlib git objects as `Uint8Array` in DO KV today. Comments in `git-store.ts` say no object exceeds ~2MB *today*; R2 spill was already the local escape hatch. On GCP those bytes belong in Cloud Storage. |
-| Not stored RPC stubs | User `ConnectedAccountRecord.account: Fetcher`, Overseer `boundHooks` Fetchers, `GatekeeperRecord.class`, scheduler initiator stubs. There is no SQL analog. Capability **records** + live reconnect only. |
+| Workspace lease / single-writer | Cloud Run Service replicas are not unique actors. `SELECT FOR UPDATE` or `pg_advisory_lock` stands in for process identity. |
+| Prefix/list by workspace | Collections are prefix-keyed views; SQL tables + indexes replace that. |
+| Git **blobs** out of the DB | Overseer git store holds zlib objects as bytes. Comments say no object exceeds ~2MB *today*. On GCP those bytes belong in Cloud Storage. SQL holds oids / `commitId` only. |
+| Not stored RPC stubs | Connected accounts, bound hooks, Gatekeeper classes, scheduler initiators. There is no SQL analog. Capability **records** + live reconnect only. |
 
-Multi-region active-active is an explicit non-goal for the first architecture. Geographic placement (`locationHint`) is unused in application code.
+Multi-region active-active is an explicit non-goal for the first architecture. Geographic placement is unused in application code.
 
-Gadget SQLite (facet-local) is **not** the kernel ledger. MCP `ActionStore` already uses real SQL (`ctx.storage.sql`); that ports to Postgres more honestly than typed-storage KV does.
+Gadget-local SQL is **not** the kernel ledger. Queued Gatekeeper actions already look like real SQL rows; they port to Postgres honestly.
 
 ## Scores (v1 single-region Company OS)
 
@@ -49,7 +49,7 @@ Use it when you actually have: multi-region strong writes, many hot workspaces t
 Do not use it for v1 because:
 
 - The plan is **single-region**. Regional Spanner still runs 3-zone Paxos and TrueTime commit-wait for a problem Cloud SQL already solves with one primary.
-- Cloud Run is not a global actor fabric. Interleaved tables give **storage locality** (child rows next to a parent, split-friendly, max depth 7). They do **not** give a Durable Object: no unique process, no stored RPC stubs. You still invent an application lease in front of replicas.
+- Cloud Run is not a global actor fabric. Interleaved tables give **storage locality** (child rows next to a parent, split-friendly, max depth 7). They do **not** give a unique process, and they do not store RPC stubs. You still invent an application lease in front of replicas.
 - Git blobs must not live in cells. Quota: **10 MiB per cell**, 100 MiB per commit, 80,000 mutations per statement. Even today’s ~2MB objects would be legal but wrong; packfiles and archives would not.
 - Dialect is locked **at database create** and cannot switch. Postgres dialect is not Cloud SQL Postgres: no extensions, triggers, SAVEPOINT, transactional DDL, or `pg_advisory_lock` as we know it. Wire access is **PGAdapter**, not a native socket. Lifting a Cloud SQL schema is not a dump/restore.
 - Hot parent keys still hotspot. Spanner will not split below a single row with no children.
@@ -74,16 +74,16 @@ AlloyDB Omni is a deploy-anywhere engine. Irrelevant until someone insists on ru
 
 Fully managed Postgres. Cloud Run has a first-class path: `--add-cloudsql-instances` injects Auth Proxy as a Unix socket (`/cloudsql/PROJECT:REGION:INSTANCE`). Alternatives: language connector in-process, private IP over Direct VPC, or an explicit proxy sidecar. IAM DB auth is supported; prefer dedicated cores (shared-core + IAM auth times out under CPU throttle).
 
-This is the Durable Object storage analog:
+Kernel mapping:
 
-| Today | Cloud SQL |
+| Need | Cloud SQL |
 | --- | --- |
-| `transactionSync` | `BEGIN … COMMIT` |
-| typed-storage collections / indexes | tables + unique indexes |
-| DO identity | `pg_advisory_lock(workspace_id)` or a `leases` row with `SELECT … FOR UPDATE` |
-| git objects in Overseer KV | **pointers** (oid, gadget `commitId`) in SQL; **bytes** in GCS |
-| AdminSettings + BLUEPRINTS KV mirror | one writer in SQL + Memorystore (or equivalent) hot read |
-| stored `Fetcher` | capability records only |
+| Atomic multi-key write | `BEGIN … COMMIT` |
+| Collections / indexes | tables + unique indexes |
+| Workspace uniqueness | `pg_advisory_lock(workspace_id)` or a `leases` row with `SELECT … FOR UPDATE` |
+| git objects | **pointers** (oid, gadget `commitId`) in SQL; **bytes** in GCS |
+| Admin config + cheap hot read | one writer in SQL + Memorystore (or equivalent) |
+| stored RPC stub | capability records only |
 
 Editions that matter: **Enterprise** HA is 99.95% excluding maintenance. **Enterprise Plus** is 99.99% including maintenance, &lt;1 s planned ops, and **Managed Connection Pooling**. Shared-core and single-zone instances are out of the SLA. A real v1 is a dedicated-core instance; HA when failover matters (low hundreds per month, not Spanner-class ops). A shared-core micro is only a sandbox.
 
@@ -97,7 +97,7 @@ Watch **connection storms**: Cloud Run replicas × app pool will exhaust `max_co
 | **Firestore Native** | Optional **thin** prototype (users, capability docs, chat as **new docs**, leases). Deny-all security rules; Admin SDK from the kernel only. Do **not** put an Overseer in one document. The old “1 write/sec per doc” line is **not** on the Native quotas page anymore; sustained hotspot writes still abort. Sequential indexed timestamps cap ~500 writes/sec per collection unless sharded. Document size **1 MiB** Native. |
 | **Realtime Database** | No. Overlaps Memorystore for fan-out; weaker query model. |
 | **Cloud Storage for Firebase** | Same buckets as GCS; use Cloud Storage from the kernel. |
-| **SQL Connect** (ex Data Connect; GraphQL on Cloud SQL) | **No** beside Cap’n Web. Clients call pre-deployed named GraphQL operations with Firebase Auth `@auth`. The kernel already has an RPC API. Schema ownership would fight typed-storage. Optional later as a *separate* BaaS, never the Overseer API. |
+| **SQL Connect** (ex Data Connect; GraphQL on Cloud SQL) | **No** beside Cap’n Web. Clients call pre-deployed named GraphQL operations with Firebase Auth `@auth`. The kernel already has an RPC API. Optional later as a *separate* BaaS, never the Overseer API. |
 | **App Hosting** | No. It is GitHub → Cloud Build → Cloud Run + CDN for SSR frameworks. This kernel needs `--sandbox-launcher`, Cloud SQL wiring, 60-minute WebSockets. Origin is a Cloud Run Service. |
 | **FCM** | Optional later for approval pings, not the ledger. |
 
@@ -107,14 +107,14 @@ Firestore is a reasonable **presence / last-seen** store and a tempting prototyp
 
 | Object | v1 home |
 | --- | --- |
-| User profile, sessions, connected **account records** (no Fetcher) | Cloud SQL |
+| User profile, sessions, connected **account records** (no RPC stub) | Cloud SQL |
 | Workspace / Overseer metadata, chats, actions, share keys, gadget `commitId` | Cloud SQL + workspace lease |
-| Git loose objects (`GitObjectRecord.data`) | GCS (`gs://…/git/{oid}`); SQL holds oid pointers |
-| Blueprint archives, screenshots, site logo | GCS (today R2 / `BLUEPRINT_CONTENT`) |
+| Git loose objects | GCS (`gs://…/git/{oid}`); SQL holds oid pointers |
+| Blueprint archives, screenshots, site logo | GCS |
 | Admin config | Cloud SQL writer; Memorystore (or equivalent) hot read |
 | Live collaboration after replica failover | Memorystore |
 | Presence / last-seen | Firestore optional, or Memorystore |
-| Gadget facet SQLite | Later: sandbox disk / PVC; not the kernel |
+| Gadget-local SQL | Later: sandbox disk / PVC; not the kernel |
 | Stored RPC stubs | Redesign: capability records + reconnect |
 
 ## Recommended ladder
@@ -138,4 +138,4 @@ Firestore is a reasonable **presence / last-seen** store and a tempting prototyp
 - [Firestore quotas](https://firebase.google.com/docs/firestore/quotas)
 - [Identity Platform](https://cloud.google.com/identity-platform)
 - [Firebase SQL Connect](https://firebase.google.com/docs/sql-connect)
-- Kernel storage: `packages/typed-storage/src/index.ts`, `packages/workshop-backend/src/git-store.ts`
+- Kernel storage: `packages/gcp-ledger`, `packages/gcp-git`
