@@ -2810,7 +2810,8 @@ function ChatInterface({
       cacheRef.current.messages.set(chatId, messages);
     }
 
-    for (const [i, msg] of page.messages.entries()) {
+    const rows = Array.from(page.messages ?? []);
+    for (const [i, msg] of rows.entries()) {
       const sequence = typeof msg.sequence === "number" ? msg.sequence : i;
       messages[sequence] = { ...msg, sequence, timestamp: asDate(msg.timestamp) };
       indexActionMessage(messages[sequence]!);
@@ -5407,6 +5408,7 @@ function ChatInterface({
               <div
                 ref={messagesContainerRef}
                 data-testid="chat-transcript"
+                data-history-count={currentMessages.length}
                 onScroll={handleMessagesScroll}
                 className="chat-panel min-h-0 flex-1 overscroll-contain overflow-y-auto"
               >

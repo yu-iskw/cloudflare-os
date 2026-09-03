@@ -287,10 +287,17 @@ async function main() {
     console.error("browser console:", consoleLines.slice(-50).join("\n"));
     console.error("innerText:", await evaluate(send, `document.body.innerText.slice(0, 2500)`));
     console.error(
-      "transcript html:",
+      "transcript:",
       await evaluate(
         send,
-        `document.querySelector('[data-testid="chat-transcript"]')?.innerHTML.slice(0, 2000) ?? "NO_TRANSCRIPT"`,
+        `(() => {
+          const el = document.querySelector('[data-testid="chat-transcript"]');
+          if (!el) return "NO_TRANSCRIPT";
+          return JSON.stringify({
+            count: el.getAttribute("data-history-count"),
+            html: el.innerHTML.slice(0, 2000),
+          });
+        })()`,
       ),
     );
     await screenshot(send, "03-workspace-timeout");

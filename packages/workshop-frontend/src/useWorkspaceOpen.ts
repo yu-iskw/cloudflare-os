@@ -17,6 +17,19 @@ import {
 
 const OBSERVER_CANCELLED = 'OBSERVER_CONFIG_CANCELLED'
 
+type LiveOverseer = {
+  id: string
+  api: RpcStub<AuthenticatedApi>
+  reloadNonce: number
+  stub: RpcStub<Overseer>
+}
+
+// React Strict Mode remounts this effect in the same turn. Disposing the
+// overseer capability in that cleanup drops in-flight getChatHistory results
+// on the browser session, so the transcript spinner never clears.
+let workspaceOpenGeneration = 0
+let liveOverseer: LiveOverseer | null = null
+
 export type WorkspaceLoadError =
   | { kind: 'open'; failure: WorkspaceOpenFailureKind }
   | { kind: 'message'; message: string }
@@ -56,20 +69,26 @@ export function useWorkspaceOpen({
   useDocumentTitle(error ? '' : metadata?.title)
 
   useEffect(() => {
+    const generation = ++workspaceOpenGeneration
     let overseerStub: RpcStub<Overseer> | null = null
     let metadataSubscription: RpcStub<{}> | null = null
     let cancelled = false
     const hadOpenWorkspace = id !== undefined && openWorkspaceIdRef.current === id
 
-    const disposeAttempt = () => {
+    const disposeMetadata = () => {
       metadataSubscription?.[Symbol.dispose]()
-      overseerStub?.[Symbol.dispose]()
       metadataSubscription = null
+    }
+
+    const releaseOverseer = () => {
+      if (liveOverseer?.stub === overseerStub) liveOverseer = null
+      overseerStub?.[Symbol.dispose]()
       overseerStub = null
     }
 
     const showTerminalError = (nextError: WorkspaceLoadError) => {
-      disposeAttempt()
+      disposeMetadata()
+      releaseOverseer()
       openWorkspaceIdRef.current = undefined
       setOverseer(null)
       setMetadata(null)
@@ -89,12 +108,26 @@ export function useWorkspaceOpen({
         const shareKey = hash.startsWith('#share=') ? hash.slice('#share='.length) : undefined
         if (shareKey) callbacksRef.current.onShareKeyConsumed()
 
-        // Do not pass a client ObserverConfigCallback stub: Cap'n Web exports it
-        // on the openGadget() call and later reads (listChats, getChatHistory)
-        // never complete in Chrome. Share keys are strings and are safe.
-        overseerStub = shareKey
-          ? authenticatedApi.openGadget(id, shareKey)
-          : authenticatedApi.openGadget(id)
+        const canReuse =
+          liveOverseer !== null &&
+          liveOverseer.id === id &&
+          liveOverseer.api === authenticatedApi &&
+          liveOverseer.reloadNonce === reloadNonce
+        if (canReuse) {
+          overseerStub = liveOverseer!.stub
+        } else {
+          if (liveOverseer) {
+            liveOverseer.stub[Symbol.dispose]()
+            liveOverseer = null
+          }
+          // Do not pass a client ObserverConfigCallback stub: Cap'n Web exports it
+          // on the openGadget() call and later reads (listChats, getChatHistory)
+          // never complete in Chrome. Share keys are strings and are safe.
+          overseerStub = shareKey
+            ? authenticatedApi.openGadget(id, shareKey)
+            : authenticatedApi.openGadget(id)
+          liveOverseer = { id, api: authenticatedApi, reloadNonce, stub: overseerStub }
+        }
         linkActionLog(overseerStub, id)
         setOverseer({ stub: overseerStub })
 
@@ -163,7 +196,13 @@ export function useWorkspaceOpen({
         pendingObserverRejectRef.current = null
       }
       setObserverConfig(null)
-      disposeAttempt()
+      disposeMetadata()
+      const stub = overseerStub
+      queueMicrotask(() => {
+        if (workspaceOpenGeneration !== generation) return
+        if (liveOverseer?.stub === stub) liveOverseer = null
+        stub?.[Symbol.dispose]()
+      })
     }
   }, [id, authenticatedApi, reloadNonce])
 
