@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Table } from '@cloudflare/kumo'
-import { Badge } from '@cloudflare/kumo'
-import { Button } from '@cloudflare/kumo'
+import { Table } from '@gadgets/kumo'
+import { Badge } from '@gadgets/kumo'
+import { Button } from '@gadgets/kumo'
 import { sampleDataRows } from '../../data/chat'
 
 export default function DataTab() {

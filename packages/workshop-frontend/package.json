@@ -3,13 +3,13 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "NODE_OPTIONS=--experimental-strip-types vite",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@cloudflare/kumo": "^2.12.0",
+    "@gadgets/kumo": "workspace:*",
     "@codemirror/commands": "^6.10.4",
     "@codemirror/lang-cpp": "^6.0.3",
     "@codemirror/lang-css": "^6.3.1",

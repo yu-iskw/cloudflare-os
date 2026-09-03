@@ -1,4 +1,4 @@
-import { Checkbox, Select, type PortalContainer } from '@cloudflare/kumo'
+import { Checkbox, Select, type PortalContainer } from '@gadgets/kumo'
 import { AiChatAuthorInfo, WorkpieceId, validateBindingName } from '@gadgets/workshop-shared/api'
 import { WorkshopInput } from '../components/WorkshopControls'
 import { ConnectionConfigField } from './ConnectionConfigField'

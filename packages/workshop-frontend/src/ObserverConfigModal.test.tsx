@@ -15,7 +15,7 @@ import type { AccountDescription, SupportedResource, VendorDescription } from '@
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-vi.mock('@cloudflare/kumo', () => {
+vi.mock('@gadgets/kumo', () => {
   const Dialog = Object.assign(
     ({ children }: { children: ReactNode }) => <div>{children}</div>,
     {
@@ -156,9 +156,9 @@ describe('ObserverConfigModal account selection', () => {
   }
 
   it('shows a single matching account directly instead of putting it in a dropdown', async () => {
-    const rendered = await render([account(1, 'dan@cloudflare.com')])
+    const rendered = await render([account(1, 'dan@example.com')])
 
-    expect(rendered.textContent).toContain('dan@cloudflare.com')
+    expect(rendered.textContent).toContain('dan@example.com')
     expect(rendered.querySelector('[data-testid="account-select"]')).toBeNull()
   })
 
@@ -180,7 +180,7 @@ describe('ObserverConfigModal account selection', () => {
 
   it('keeps the account dropdown when multiple accounts match', async () => {
     const rendered = await render([
-      account(1, 'dan@cloudflare.com'),
+      account(1, 'dan@example.com'),
       account(2, 'dan.personal@gmail.com'),
     ])
 
@@ -213,7 +213,7 @@ describe('ObserverConfigModal account selection', () => {
     >()
       .mockResolvedValue({ url: 'https://accounts.google.test/oauth' })
     vi.spyOn(window, 'open').mockImplementation(() => null)
-    const underScoped = account(1, 'dan@cloudflare.com', [GMAIL_RESOURCE_PATTERN])
+    const underScoped = account(1, 'dan@example.com', [GMAIL_RESOURCE_PATTERN])
     const rendered = await render([underScoped], {
       api: fakeApi([underScoped], { ensureAccountResources }),
     })
@@ -241,7 +241,7 @@ describe('ObserverConfigModal account selection', () => {
       (accountId: number, resourceUrlPatterns: string[]) => Promise<{ url?: string }>
     >().mockResolvedValue({ url: 'https://accounts.google.test/oauth' })
     vi.spyOn(window, 'open').mockImplementation(() => null)
-    const legacy = account(1, 'dan@cloudflare.com')
+    const legacy = account(1, 'dan@example.com')
     const rendered = await render([legacy], {
       api: fakeApi([legacy], { ensureAccountResources }),
     })
@@ -265,7 +265,7 @@ describe('ObserverConfigModal account selection', () => {
     const ensureAccountResources = vi.fn<
       (accountId: number, resourceUrlPatterns: string[]) => Promise<{ url?: string }>
     >().mockResolvedValue({})
-    const legacy = account(1, 'dan@cloudflare.com')
+    const legacy = account(1, 'dan@example.com')
     const rendered = await render([legacy], {
       api: fakeApi([legacy], { ensureAccountResources }),
     })
@@ -283,7 +283,7 @@ describe('ObserverConfigModal account selection', () => {
 
   it('allows verification when the account already has the required grant', async () => {
     const onConfirm = vi.fn<(choices: ObserverAccountChoice[]) => void>()
-    const granted = account(1, 'dan@cloudflare.com', [DOC_RESOURCE.urlPattern])
+    const granted = account(1, 'dan@example.com', [DOC_RESOURCE.urlPattern])
     const rendered = await render([granted], { onConfirm })
 
     const verify = [...rendered.querySelectorAll('button')]

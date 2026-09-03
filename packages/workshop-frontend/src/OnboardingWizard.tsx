@@ -1,6 +1,6 @@
 import { logRpcFailure } from './rpcErrors'
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useKumoToastManager } from '@cloudflare/kumo'
+import { useKumoToastManager } from '@gadgets/kumo'
 import { useAuthenticatedApi } from './AuthContext'
 import {
   AiChatAuthorInfo,

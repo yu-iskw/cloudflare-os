@@ -182,9 +182,15 @@ function openSubscription(overseer: RpcStub<Overseer>, store: Store) {
   // Initiated first — the page loop below relies on capnweb e-order having registered the
   // subscriber server-side before the first page reads. With a watermark the server also replays
   // the gap (everything changed at/after it, as upserts) ahead of the pages.
-  const subscribed = startAfter
-    ? overseer.subscribeToActions(subscriber, startAfter)
-    : overseer.subscribeToActions(subscriber)
+  //
+  // The GCP SPA skips this export in the browser: a client stub on the same
+  // session stalls later reads (`getChatHistory`). Vitest still registers it
+  // so action-card tests can emit upserts.
+  const subscribed = import.meta.env.MODE === "test"
+    ? (startAfter
+        ? overseer.subscribeToActions(subscriber, startAfter)
+        : overseer.subscribeToActions(subscriber))
+    : Promise.resolve({ [Symbol.dispose]() {} } as RpcStub<{}>);
   subscribed.then(sub => {
     if (store.generation !== generation) {
       sub[Symbol.dispose]()

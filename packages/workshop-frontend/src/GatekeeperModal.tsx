@@ -1,6 +1,6 @@
 import { logRpcFailure } from './rpcErrors'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Dialog, useKumoToastManager } from '@cloudflare/kumo'
+import { Dialog, useKumoToastManager } from '@gadgets/kumo'
 import {
   CaretDown,
   CaretLeft,

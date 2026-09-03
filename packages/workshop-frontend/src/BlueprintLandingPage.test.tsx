@@ -16,8 +16,8 @@ const testState = vi.hoisted(() => ({
   authenticatedApi: null as RpcStub<AuthenticatedApi> | null,
 }))
 
-vi.mock('@cloudflare/kumo', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@cloudflare/kumo')>()),
+vi.mock('@gadgets/kumo', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@gadgets/kumo')>()),
   useKumoToastManager: () => ({ add: vi.fn<(toast: unknown) => void>() }),
 }))
 

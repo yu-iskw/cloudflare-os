@@ -10,7 +10,7 @@ import ResourcePicker from './ResourcePicker'
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-vi.mock('@cloudflare/kumo', () => ({
+vi.mock('@gadgets/kumo', () => ({
   Tooltip: ({ children }: { children: ReactNode }) => children,
   useKumoToastManager: () => ({ add: vi.fn<(toast: unknown) => void>() }),
 }))

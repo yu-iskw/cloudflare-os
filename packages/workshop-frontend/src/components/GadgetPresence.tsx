@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { Popover, Tooltip } from '@cloudflare/kumo'
-import { RpcStub, RpcTarget } from 'capnweb'
-import { Overseer, AuthenticatedApi, PresenceParticipant, PresenceSubscriber } from '@gadgets/workshop-shared/api'
+import { Popover, Tooltip } from '@gadgets/kumo'
+import { RpcStub } from 'capnweb'
+import { Overseer, AuthenticatedApi, PresenceParticipant } from '@gadgets/workshop-shared/api'
 import { PersonAvatar } from './PersonAvatar'
 
 const MAX_VISIBLE = 3
@@ -23,45 +23,9 @@ export function GadgetPresence({
   const [participants, setParticipants] = useState<PresenceParticipant[]>([])
 
   useEffect(() => {
-    let cancelled = false
-    let sub: RpcStub<{}> | null = null
-    const roster = new Map<string, PresenceParticipant>()
-    const flush = () => {
-      if (!cancelled) setParticipants([...roster.values()])
-    }
-
-    class PresenceSubscriberImpl extends RpcTarget implements PresenceSubscriber {
-      init(list: PresenceParticipant[]) {
-        roster.clear()
-        for (const p of list) roster.set(p.key, p)
-        flush()
-      }
-      add(p: PresenceParticipant) {
-        roster.set(p.key, p)
-        flush()
-      }
-      remove(key: string) {
-        roster.delete(key)
-        flush()
-      }
-    }
-
-    const promise = overseer.subscribeToPresence(
-      new PresenceSubscriberImpl() as unknown as RpcStub<PresenceSubscriber>,
-    )
-
-    promise.then((stub) => {
-      if (cancelled) {
-        stub[Symbol.dispose]()
-      } else {
-        sub = stub
-      }
-    }).catch(() => {})
-
-    return () => {
-      cancelled = true
-      sub?.[Symbol.dispose]()
-    }
+    // Skip exporting a PresenceSubscriber RpcTarget: it stalls later reads on
+    // the same browser session. The roster stays empty on this kernel.
+    setParticipants([])
   }, [overseer])
 
   // Avoid briefly showing the current user while whoami() is pending.

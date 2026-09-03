@@ -29,7 +29,7 @@ export default {
   run: {
     tasks: {
       test: {
-        command: withTestTimeout("node --test 'scripts/**/*.test.ts'"),
+        command: withTestTimeout("node --experimental-strip-types --test 'scripts/**/*.test.ts'"),
         cwd: "..",
         // Workspace-wide, matching `cwd`: the suites read across `packages/` and the root manifests,
         // and a guard that stopped seeing a file it asserts about would cache-hit its way to a

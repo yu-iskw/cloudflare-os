@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Dialog, Tooltip, useKumoToastManager } from '@cloudflare/kumo'
+import { Dialog, Tooltip, useKumoToastManager } from '@gadgets/kumo'
 import {
   Pencil,
   Trash,

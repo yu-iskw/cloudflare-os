@@ -1,0 +1,16 @@
+# Company OS Cloud Run service (gen2)
+
+# Deploy with:
+#   gcloud run deploy company-os \
+#     --source . \
+#     --execution-environment gen2 \
+#     --sandbox=legacy \
+#     --no-cpu-throttling \
+#     --timeout=3600 \
+#     --concurrency=1 \
+#     --min-instances=1 \
+#     --add-cloudsql-instances=PROJECT:REGION:INSTANCE \
+#     --set-env-vars=FRONTEND_DIST=/app/packages/workshop-frontend/dist
+#
+# Auth Proxy is not a pooler: keep the SQL client max at 2–5 per replica.
+# WebSockets last 60 minutes; the SPA reconnects before then.

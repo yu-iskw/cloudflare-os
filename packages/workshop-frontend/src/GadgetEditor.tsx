@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type PointerEvent as ReactPointerEvent } from 'react'
 import { useParams, useNavigate, useSearch, Link } from '@tanstack/react-router'
-import { DropdownMenu, useKumoToastManager } from '@cloudflare/kumo'
+import { DropdownMenu, useKumoToastManager } from '@gadgets/kumo'
 import {
   ShareNetwork,
   Pencil,
@@ -28,7 +28,6 @@ import {
   WorkpieceId,
   WorkpieceSummary,
   BlueprintOutput,
-  WorkpiecesSubscriber,
 } from '@gadgets/workshop-shared/api'
 import ObserverConfigModal from './ObserverConfigModal'
 import GadgetCodeInterface from './GadgetCodeInterface'
@@ -43,6 +42,7 @@ import WorkpiecePicker, {
   WORKPIECE_RAIL_EXPANDED_WIDTH,
 } from './WorkpiecePicker'
 import ChatInterface, {
+  primeChatHistory,
   type ActiveFileTarget,
   type ChatCodeChanges,
   type ChatLiveChangeRows,
@@ -88,59 +88,6 @@ class ConsoleLogSubscriberImpl extends RpcTarget implements ConsoleLogSubscriber
       this.logBufferRef.current.push(...logs.map(l => ({ ...l, source: 'server' as const })))
       this.onBufferUpdated()
     }
-  }
-}
-
-// ─── workpieces subscriber ────────────────────────────────────────────────────
-
-// Receives the workspace's workpiece list (see Overseer.subscribeToWorkpieces()). Entries
-// received before ready() are buffered so a (re)subscription replaces the list atomically instead
-// of flashing a partially-populated one.
-class WorkpiecesSubscriberImpl extends RpcTarget implements WorkpiecesSubscriber {
-  private buffer: Map<WorkpieceId, WorkpieceSummary> | null = new Map()
-  private cancelled = false
-
-  constructor(
-    private onUpdate: (
-      update: (prev: Map<WorkpieceId, WorkpieceSummary>) => Map<WorkpieceId, WorkpieceSummary>,
-    ) => void,
-    private onReady: (initial: Map<WorkpieceId, WorkpieceSummary>) => void,
-  ) {
-    super()
-  }
-
-  entry(summary: WorkpieceSummary) {
-    if (this.cancelled) return
-    if (this.buffer) {
-      this.buffer.set(summary.id, summary)
-      return
-    }
-    this.onUpdate(prev => new Map(prev).set(summary.id, summary))
-  }
-
-  removed(id: WorkpieceId) {
-    if (this.cancelled) return
-    if (this.buffer) {
-      this.buffer.delete(id)
-      return
-    }
-    this.onUpdate(prev => {
-      const next = new Map(prev)
-      next.delete(id)
-      return next
-    })
-  }
-
-  ready() {
-    if (this.cancelled) return
-    const initial = this.buffer ?? new Map<WorkpieceId, WorkpieceSummary>()
-    this.buffer = null
-    this.onReady(initial)
-  }
-
-  // local call
-  cancel() {
-    this.cancelled = true
   }
 }
 
@@ -439,8 +386,8 @@ export default function GadgetEditor() {
   const toasts = useKumoToastManager()
 
   // ── core state ──────────────────────────────────────────────────────────────
-  // The workspace's workpiece list (gadget-type workpieces only in v1), kept live via
-  // subscribeToWorkpieces(). `workpiecesReady` flips once the initial listing has arrived.
+  // The workspace's workpiece list. Live subscribeToWorkpieces() is skipped on
+  // this kernel (client-stub export stalls later reads); v1 starts empty.
   const [workpieces, setWorkpieces] = useState<Map<WorkpieceId, WorkpieceSummary>>(new Map())
   const [workpiecesReady, setWorkpiecesReady] = useState(false)
   const knownWorkpieceIdsRef = useRef<Set<WorkpieceId> | null>(null)
@@ -479,6 +426,7 @@ export default function GadgetEditor() {
     },
   })
   const [userInfo, setUserInfo] = useState<AiChatAuthorInfo | null>(null)
+  const [chatHistoryGen, setChatHistoryGen] = useState(0)
 
   // The workspace-level flag covers reopen failures; the socket-level flag covers the outage
   // window itself, during which the dead stub stays published and no reopen is attempted yet.
@@ -621,14 +569,15 @@ export default function GadgetEditor() {
     file: ActiveFileTarget | null | undefined
   } | null>(null)
   const [hasCode, setHasCode] = useState<boolean | null>(null)
-  const [chatCount, setChatCount] = useState<number | null>(null)
+  const [chatCount, setChatCount] = useState<number>(0)
   const [hasChatZero, setHasChatZero] = useState(false)
   const [_hasBindings, setHasBindings] = useState(false)
   const [isAgentActive, setIsAgentActive] = useState(false)
   const [hasAnyProposedChanges, setHasAnyProposedChanges] = useState(false)
   const [selectedChatHasProposedChanges, setSelectedChatHasProposedChanges] = useState(false)
   const selectedChatId = urlChatId
-  const chatListReady = chatCount !== null
+  // Do not gate the pane on listChats: a stalled subscribe used to leave this null forever.
+  const chatListReady = true
   const singleInitialChat = chatCount === 1 && hasChatZero
   const [userNavigatedToList, setUserNavigatedToList] = useState(false)
   // Note: raw `hasCode` (not `effectiveHasCode` below) is deliberate here, to avoid a dependency
@@ -643,6 +592,19 @@ export default function GadgetEditor() {
   // not caught up yet. As soon as merged code exists, dropping back to the chat
   // list should become possible.
   const effectiveSelectedChatId = selectedChatId ?? (pinInitialChatSelection ? 0 : null)
+
+  useEffect(() => {
+    if (!overseer || !id || effectiveSelectedChatId === null) return
+    const chatId = effectiveSelectedChatId
+    const workspaceId = id
+    const stub = overseer.stub
+    void stub.getChatHistory(chatId).then((page) => {
+      primeChatHistory(workspaceId, chatId, page)
+      setChatHistoryGen((n) => n + 1)
+    }).catch((err) => {
+      console.error('Failed to load chat history:', err)
+    })
+  }, [overseer, id, effectiveSelectedChatId])
 
   // ── workpiece selection ──────────────────────────────────────────────────────
   const allGadgets = useMemo(() => {
@@ -1022,7 +984,7 @@ export default function GadgetEditor() {
     setLiveRows(undefined)
     setStreamingActiveFileState(null)
     setHasCode(null)
-    setChatCount(null)
+    setChatCount(0)
     setHasChatZero(false)
     setHasAnyProposedChanges(false)
     setSelectedChatHasProposedChanges(false)
@@ -1138,28 +1100,16 @@ export default function GadgetEditor() {
 
   // ── workpiece list subscription ───────────────────────────────────────────────
   useEffect(() => {
-    if (!overseer) return
-    let sub: RpcStub<{}> | null = null
-    let cancelled = false
-    const subscriber = new WorkpiecesSubscriberImpl(
-      update => setWorkpieces(update),
-      initial => {
-        setWorkpieces(initial)
-        setWorkpiecesReady(true)
-      },
-    )
-    overseer.stub
-      .subscribeToWorkpieces(subscriber)
-      .then(s => {
-        if (cancelled) { s[Symbol.dispose](); return }
-        sub = s
-      })
-      .catch(err => console.error('Failed to subscribe to workpieces:', err))
-    return () => {
-      cancelled = true
-      subscriber.cancel()
-      sub?.[Symbol.dispose]()
+    if (!overseer) {
+      setWorkpiecesReady(false)
+      return
     }
+    // Do not export a WorkpiecesSubscriber RpcTarget over the browser session:
+    // the same Cap'n Web stall that blocked getChatHistory also blocked this
+    // ready() handshake. v1 workspaces load with an empty workpiece list; the
+    // agent can still create gadgets later through Code Mode.
+    setWorkpieces(new Map())
+    setWorkpiecesReady(true)
   }, [overseer])
 
   // ── selected gadget stub ────────────────────────────────────────────────────────
@@ -1228,20 +1178,8 @@ export default function GadgetEditor() {
     }
   }, [overseer, toasts])
 
-  // ── console log subscription ──────────────────────────────────────────────────
-  useEffect(() => {
-    if (!overseer) return
-    let sub: RpcStub<{}> | null = null
-    let cancelled = false
-    overseer.stub
-      .subscribeToConsoleLogs(consoleLogSubscriberRef.current)
-      .then(s => {
-        if (cancelled) { s[Symbol.dispose](); return }
-        sub = s
-      })
-      .catch(err => console.error('Failed to subscribe to console logs:', err))
-    return () => { cancelled = true; sub?.[Symbol.dispose]() }
-  }, [overseer])
+  // Live console-log push is not wired on the GCP kernel. Exporting the
+  // subscriber RpcTarget stalled later reads on the same browser session.
 
   // ── reload UI when preview branch/code changes ────────────────────────────────
   useEffect(() => {
@@ -1656,7 +1594,7 @@ export default function GadgetEditor() {
             <div className="flex-1 min-h-0 relative">
               <div className={layoutModeReady ? 'h-full' : 'h-full invisible'}>
                 <ChatInterface
-                  key={id}
+                  key={`${id}:${chatHistoryGen}`}
                   workspaceId={id}
                   overseer={overseer.stub}
                   selectedChatId={effectiveSelectedChatId}

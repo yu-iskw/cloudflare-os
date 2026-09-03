@@ -8,7 +8,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
-import { DropdownMenu, useKumoToastManager } from "@cloudflare/kumo";
+import { DropdownMenu, useKumoToastManager } from "@gadgets/kumo";
 import { Brain, File as FileIcon, Plug, Plus } from "@phosphor-icons/react";
 import { RpcStub } from "capnweb";
 import type {

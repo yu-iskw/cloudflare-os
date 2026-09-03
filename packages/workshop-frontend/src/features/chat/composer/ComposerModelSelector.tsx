@@ -1,4 +1,4 @@
-import { DropdownMenu } from "@cloudflare/kumo";
+import { DropdownMenu } from "@gadgets/kumo";
 import { CaretDown, Check } from "@phosphor-icons/react";
 import type { AiChatAuthorInfo } from "@gadgets/workshop-shared/api";
 

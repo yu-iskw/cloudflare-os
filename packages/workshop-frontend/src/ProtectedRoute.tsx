@@ -1,10 +1,10 @@
 import { ReactNode } from 'react'
 import { RpcStub } from 'capnweb'
 import { PublicApi } from '@gadgets/workshop-shared/api'
-import { useAuth, CF_ACCESS_MODE } from './useAuth'
+import { useAuth, IAP_MODE } from './useAuth'
 import { AuthProvider } from './AuthContext'
 import LoginPage from './LoginPage'
-import { Loader, Banner, Button } from '@cloudflare/kumo'
+import { Loader, Banner, Button } from '@gadgets/kumo'
 
 interface ProtectedRouteProps {
   children: ReactNode
@@ -69,9 +69,9 @@ export default function ProtectedRoute({ children, rpcStub }: ProtectedRouteProp
 
   // In CF Access mode the user is always authenticated (Access enforces login before the
   // app loads), so we never show the login page. If not authenticated yet, keep the
-  // spinner up while the pipelined authenticateFromCfAccess() call resolves.
+  // spinner up while the pipelined authenticateFromIap() call resolves.
   if (!isAuthenticated) {
-    if (CF_ACCESS_MODE) {
+    if (IAP_MODE) {
       return (
         <div
           style={{

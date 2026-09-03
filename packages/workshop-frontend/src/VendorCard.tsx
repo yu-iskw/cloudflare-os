@@ -1,4 +1,4 @@
-import { Text, Loader } from '@cloudflare/kumo'
+import { Text, Loader } from '@gadgets/kumo'
 import { LinkSimple } from '@phosphor-icons/react'
 import { VendorDescription } from '@gadgets/workshop-shared/gatekeeper'
 import Avatar from './components/Avatar'

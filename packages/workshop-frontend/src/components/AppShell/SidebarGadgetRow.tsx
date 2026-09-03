@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { DotsThree, Star, ShareNetwork, Trash, Pencil } from '@phosphor-icons/react'
-import { DropdownMenu } from '@cloudflare/kumo'
+import { DropdownMenu } from '@gadgets/kumo'
 import { MENU_CONTENT, MENU_ITEM, MENU_ITEM_DANGER, MENU_POSITIONER_STYLE } from '../menuStyles'
 import { useState, useEffect, useRef } from 'react'
 import type { GadgetMetadataWithTimestamps } from '@gadgets/workshop-shared/api'

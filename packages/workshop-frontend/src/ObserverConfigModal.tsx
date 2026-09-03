@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Dialog, Select, Loader, Text, useKumoToastManager } from '@cloudflare/kumo'
+import { Dialog, Select, Loader, Text, useKumoToastManager } from '@gadgets/kumo'
 import { Warning, Plus, ArrowClockwise, CheckCircle } from '@phosphor-icons/react'
 import { RpcStub } from 'capnweb'
 import {

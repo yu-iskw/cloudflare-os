@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Popover } from '@cloudflare/kumo'
+import { Popover } from '@gadgets/kumo'
 import { ArrowRight, Pulse } from '@phosphor-icons/react'
 import type { RpcStub } from 'capnweb'
 import type { Overseer } from '@gadgets/workshop-shared/api'

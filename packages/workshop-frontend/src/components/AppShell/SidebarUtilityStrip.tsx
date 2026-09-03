@@ -1,6 +1,6 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import { Desktop, Moon, Plug, Sun } from '@phosphor-icons/react'
-import { Tooltip } from '@cloudflare/kumo'
+import { Tooltip } from '@gadgets/kumo'
 import UserMenu from '../UserMenu'
 import { useTheme } from '../../ThemeContext'
 import type { ThemeMode } from '../../theme'

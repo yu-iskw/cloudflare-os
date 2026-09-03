@@ -1,4 +1,4 @@
-import { Dialog, Switch } from '@cloudflare/kumo'
+import { Dialog, Switch } from '@gadgets/kumo'
 import { X, ShieldCheck } from '@phosphor-icons/react'
 import { useEffect, useMemo, useState } from 'react'
 import {

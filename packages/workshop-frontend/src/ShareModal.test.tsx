@@ -23,7 +23,7 @@ afterAll(() => {
   else testGlobal.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment
 })
 
-vi.mock('@cloudflare/kumo', () => {
+vi.mock('@gadgets/kumo', () => {
   const Dialog = Object.assign(
     ({ children }: { children: ReactNode }) => <div>{children}</div>,
     {
@@ -73,7 +73,7 @@ import ShareModal from './ShareModal'
 const METADATA = { id: 'trip-planner', title: 'Trip planner' } as GadgetMetadata
 const WORKSPACE_URL = `${window.location.origin}/workspace/trip-planner`
 
-const CURRENT_USER: AiChatAuthorInfo = { type: 'user', id: 'dan@cloudflare.com', name: 'Dan' }
+const CURRENT_USER: AiChatAuthorInfo = { type: 'user', id: 'dan@example.com', name: 'Dan' }
 
 const DOC_REQUIREMENT: ObserverBindingNeed = {
   gatekeeperId: 7,
@@ -112,7 +112,7 @@ function fakeOverseer(overrides: OverseerOverrides = {}): RpcStub<Overseer> {
       overrides.listObserverRequirements ??
       (async (role: CollaboratorRole) => requirements[role] ?? []),
     addCollaborator: async () => ({
-      profile: { type: 'user', id: 'ada@cloudflare.com', name: 'Ada' },
+      profile: { type: 'user', id: 'ada@example.com', name: 'Ada' },
       role: 'use',
       addedBy: [],
     }),

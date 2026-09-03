@@ -1,4 +1,4 @@
-import { Dialog } from '@cloudflare/kumo'
+import { Dialog } from '@gadgets/kumo'
 import { X } from '@phosphor-icons/react'
 import { WorkshopButton, WorkshopIconButton } from './WorkshopControls'
 

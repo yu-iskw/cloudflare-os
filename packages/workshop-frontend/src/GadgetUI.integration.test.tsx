@@ -18,7 +18,7 @@ afterAll(() => {
   }
 })
 
-vi.mock('@cloudflare/kumo', () => ({
+vi.mock('@gadgets/kumo', () => ({
   Banner: () => null,
   Loader: () => null,
   Text: ({ children }: { children: ReactNode }) => children,

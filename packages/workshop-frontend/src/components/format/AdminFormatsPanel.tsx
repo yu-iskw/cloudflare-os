@@ -8,7 +8,7 @@
 // plural and icon, and clearing an override falls back to it.
 
 import { useEffect, useMemo, useState } from 'react'
-import { Button, DropdownMenu, Input, Switch, useKumoToastManager } from '@cloudflare/kumo'
+import { Button, DropdownMenu, Input, Switch, useKumoToastManager } from '@gadgets/kumo'
 import { ArrowDown, ArrowUp, CaretDown, CaretRight, Plus, Sparkle, Trash, Warning } from '@phosphor-icons/react'
 import type {
   AdminApi,

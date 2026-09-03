@@ -9,6 +9,7 @@ import {
   useRef,
   useMemo,
   useCallback,
+  useSyncExternalStore,
   type ComponentPropsWithoutRef,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
@@ -20,7 +21,7 @@ import {
   Popover,
   Tooltip,
   useKumoToastManager,
-} from "@cloudflare/kumo";
+} from "@gadgets/kumo";
 
 import {
   CaretDown,
@@ -37,7 +38,6 @@ import {
   Swap,
   ArrowUUpLeft,
   ArrowsClockwise,
-  Lightning,
   Copy,
   Clipboard as ClipboardIcon,
   WarningCircle,
@@ -103,7 +103,6 @@ import { useResolveAction } from "./useResolveAction";
 import { safeExternalUrl } from "./utils/safeExternalUrl";
 import { useAuthenticatedApi } from "./AuthContext";
 import { useVendorBranding } from "./useVendorBranding";
-import OutOfCreditsModal from "./components/billing/OutOfCreditsModal";
 import { formatFullTimestamp } from "./utils/formatTimestamp";
 import { copyToClipboard } from "./clipboard";
 import { isImeComposing } from "./keyboardEvent";
@@ -2435,9 +2434,19 @@ function startOfDay(d: Date): Date {
   return out;
 }
 
+/** Cap'n Web Dates usually survive the wire; coerce so a string/number cannot crash the chat list. */
+function asDate(value: unknown): Date {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value === "number" || typeof value === "string") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return new Date();
+}
+
 function getChatTimeBucket(date: Date, now: Date): ChatTimeBucket {
   const diffDays = Math.round(
-    (startOfDay(now).getTime() - startOfDay(date).getTime()) / 86_400_000,
+    (startOfDay(now).getTime() - startOfDay(asDate(date)).getTime()) / 86_400_000,
   );
   if (diffDays <= 0) return "today";
   if (diffDays === 1) return "yesterday";
@@ -2478,6 +2487,79 @@ interface ChatCache {
   compacted: Map<number, CompactionBoundary[]>;
   actionMessages: Map<number, Map<string, { chatId: number; sequence: number }>>;
   lastMessageTimestamp: Date | null;
+}
+
+function emptyChatCache(): ChatCache {
+  return {
+    chats: new Map(),
+    messages: new Map(),
+    compacted: new Map(),
+    actionMessages: new Map(),
+    lastMessageTimestamp: null,
+  };
+}
+
+/** Survives remounts (Strict Mode) and overseer stub swaps (reconnect) for a workspace. */
+const chatCachesByWorkspace = new Map<string, ChatCache>();
+
+function chatCacheForWorkspace(workspaceId: string): ChatCache {
+  let cache = chatCachesByWorkspace.get(workspaceId);
+  if (!cache) {
+    cache = emptyChatCache();
+    chatCachesByWorkspace.set(workspaceId, cache);
+  }
+  return cache;
+}
+
+// History often lands on a Strict Mode fiber that has already unmounted. The
+// module cache still holds the page; this store is what makes the live fiber
+// re-read it.
+let chatCacheEpoch = 0;
+const chatCacheListeners = new Set<() => void>();
+
+function emitChatCache(): void {
+  chatCacheEpoch += 1;
+  const listeners = [...chatCacheListeners];
+  queueMicrotask(() => {
+    for (const listener of listeners) listener();
+  });
+}
+
+function subscribeChatCache(onStoreChange: () => void): () => void {
+  chatCacheListeners.add(onStoreChange);
+  return () => {
+    chatCacheListeners.delete(onStoreChange);
+  };
+}
+
+function getChatCacheEpoch(): number {
+  return chatCacheEpoch;
+}
+
+/** Seed the workspace transcript cache before ChatInterface mounts or remounts. */
+export function primeChatHistory(
+  workspaceId: string,
+  chatId: number,
+  page: AiChatHistoryPage,
+): void {
+  const cache = chatCacheForWorkspace(workspaceId);
+  let messages = cache.messages.get(chatId);
+  if (!messages) {
+    messages = [];
+    cache.messages.set(chatId, messages);
+  }
+  for (const [i, msg] of Array.from(page.messages ?? []).entries()) {
+    const sequence = typeof msg.sequence === "number" ? msg.sequence : i;
+    messages[sequence] = { ...msg, sequence, timestamp: asDate(msg.timestamp) };
+  }
+  if (page.compacted) {
+    const boundaries = cache.compacted.get(chatId) ?? [];
+    cache.compacted.set(chatId, [
+      ...boundaries.filter(({ to }) => to !== page.compacted!.to),
+      page.compacted,
+    ].toSorted((a, b) => a.to - b.to));
+  }
+  emitChatCache();
 }
 
 type ProvisionalToolCallState = {
@@ -2595,13 +2677,10 @@ function ChatInterface({
   const toasts = useKumoToastManager();
   const { currentUser } = useAuthenticatedApi();
   const getOverseer = useCallback(() => overseer, [overseer]);
-  const cacheRef = useRef<ChatCache>({
-    chats: new Map(),
-    messages: new Map(),
-    compacted: new Map(),
-    actionMessages: new Map(),
-    lastMessageTimestamp: null,
-  });
+  const cacheRef = useRef<ChatCache>(chatCacheForWorkspace(workspaceId));
+  cacheRef.current = chatCacheForWorkspace(workspaceId);
+  const cacheEpoch = useSyncExternalStore(subscribeChatCache, getChatCacheEpoch, getChatCacheEpoch);
+  const [historyTick, setHistoryTick] = useState(0);
   const provisionalRef = useRef<Map<number, ProvisionalChatState>>(new Map());
   // Per-chat buffers of live (unmaterialized) change rows (see ChatLiveChangeRows), fed by
   // changeApplied, pruned by materialization watermarks and generation bumps.
@@ -2615,24 +2694,19 @@ function ChatInterface({
   const editPreviewsRef = useRef<Map<number, StreamingEditPreview>>(new Map());
   const editPreviewListenersRef =
       useRef<Map<number, Set<(event: EditPreviewEvent) => void>>>(new Map());
-  // Last server-instance generation seen (survives reconnects). Used to detect a full DO restart,
-  // in which case in-flight provisional streams were lost and must be discarded. See
+  // Last server-instance generation seen (survives reconnects). Used to detect a Cloud Run replica
+  // recycle, in which case in-flight provisional streams were lost and must be discarded. See
   // AiChatSubscriber.streamGeneration.
   const lastStreamGenerationRef = useRef<number | undefined>(undefined);
 
   // UI state
   const [_isSubscribed, setIsSubscribed] = useState(false);
   const [chatListReady, setChatListReady] = useState(false);
-  // Out-of-credits modal (free-tier limit reached). `usageModalShownFor` tracks the error sequence
-  // we've already auto-opened for, so dismissing it doesn't immediately reopen.
-  const [usageModalOpen, setUsageModalOpen] = useState(false);
-  const usageModalShownForRef = useRef<number | null>(null);
   const [chatListScope, setChatListScope] = useState<ChatListScope>("all");
   const [chatListVersion, setChatListVersion] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
   // Fetching the page before the selected chat's compaction boundary.
   const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
-  const [updateCounter, setUpdateCounter] = useState(0); // Force re-render when cache updates
+  const [, setUpdateCounter] = useState(0); // Force re-render when cache updates
   const [proposedChangesVersion, setProposedChangesVersion] = useState(0); // Incremented only for change-affecting messages
   // Rows live in refs (chatChangeRowsRef); this state only forces re-renders of their readers (the
   // draft banner) as rows arrive or get pruned. Subscribed consumers are fed synchronously and
@@ -2766,9 +2840,11 @@ function ChatInterface({
       cacheRef.current.messages.set(chatId, messages);
     }
 
-    for (const msg of page.messages) {
-      messages[msg.sequence] = msg;
-      indexActionMessage(msg);
+    const rows = Array.from(page.messages ?? []);
+    for (const [i, msg] of rows.entries()) {
+      const sequence = typeof msg.sequence === "number" ? msg.sequence : i;
+      messages[sequence] = { ...msg, sequence, timestamp: asDate(msg.timestamp) };
+      indexActionMessage(messages[sequence]!);
     }
 
     if (page.compacted) {
@@ -2777,6 +2853,7 @@ function ChatInterface({
         ...boundaries.filter(({to}) => to !== page.compacted!.to), page.compacted,
       ].toSorted((a, b) => a.to - b.to));
     }
+    emitChatCache();
   };
 
   // Held in a ref for the same reason as `refreshBoundaryRef` below: the subscriber outlives the
@@ -2847,7 +2924,7 @@ function ChatInterface({
   // Get sorted list of chats from cache
   const chatList = useMemo(
     () => Array.from(cacheRef.current.chats.values()).sort(
-      (a, b) => b.lastActive.getTime() - a.lastActive.getTime(),
+      (a, b) => asDate(b.lastActive).getTime() - asDate(a.lastActive).getTime(),
     ),
     [chatListVersion],
   );
@@ -2925,18 +3002,24 @@ function ChatInterface({
     }
   }, [sidebarMode, selectedChatId, chatListReady, chatList]);
 
-  // Get messages for selected chat (filter out any undefined slots in sparse array)
-  // Memoized to prevent creating new array on every render
-  const currentMessages = useMemo(() => {
-    if (selectedChatId === null) return [];
-    return (cacheRef.current.messages.get(selectedChatId) || []).filter(
-      (msg) => msg !== undefined,
-    );
-  }, [selectedChatId, updateCounter]);
+  // Read the workspace cache on every render; cacheEpoch (useSyncExternalStore)
+  // is what re-renders the live fiber after an unmounted Strict Mode write.
+  const currentMessages = selectedChatId === null
+    ? []
+    : (cacheRef.current.messages.get(Number(selectedChatId))
+        ?? cacheRef.current.messages.get(selectedChatId)
+        ?? []).filter((msg) => msg !== undefined);
+  void cacheEpoch;
+  void historyTick;
+  const isLoading = selectedChatId !== null
+    && !cacheRef.current.messages.has(Number(selectedChatId))
+    && !cacheRef.current.messages.has(selectedChatId);
   const currentCompactions = useMemo(() => {
     if (selectedChatId === null) return [];
-    return cacheRef.current.compacted.get(selectedChatId) ?? [];
-  }, [selectedChatId, updateCounter]);
+    return cacheRef.current.compacted.get(Number(selectedChatId))
+      ?? cacheRef.current.compacted.get(selectedChatId)
+      ?? [];
+  }, [selectedChatId, cacheEpoch, historyTick]);
   const messageStates = useMemo(
     // The oldest boundary is the one whose proposed changes no loaded message accounts for.
     () => computeMessageStates(currentMessages, currentCompactions[0]),
@@ -3001,20 +3084,6 @@ function ChatInterface({
   }, [currentMessages, currentUser]);
 
   const lastMessageSequence = currentMessages[currentMessages.length - 1]?.sequence;
-
-  // Auto-open the out-of-credits modal once when the latest message is a usage-limit error.
-  const lastMessage = currentMessages[currentMessages.length - 1];
-  useEffect(() => {
-    if (
-      lastMessage &&
-      lastMessage.type === "error" &&
-      lastMessage.code === "usage_limit" &&
-      usageModalShownForRef.current !== lastMessage.sequence
-    ) {
-      usageModalShownForRef.current = lastMessage.sequence;
-      setUsageModalOpen(true);
-    }
-  }, [lastMessage]);
 
   // Get metadata for selected chat
   const currentChatMetadata =
@@ -3462,15 +3531,16 @@ function ChatInterface({
       }
 
       // Set message at sequence index (idempotent)
-      messages[msg.sequence] = msg;
-      indexActionMessage(msg);
+      const stored = { ...msg, timestamp: asDate(msg.timestamp) };
+      messages[msg.sequence] = stored;
+      indexActionMessage(stored);
 
       // Update last message timestamp
       if (
         !cacheRef.current.lastMessageTimestamp ||
-        msg.timestamp > cacheRef.current.lastMessageTimestamp
+        stored.timestamp > cacheRef.current.lastMessageTimestamp
       ) {
-        cacheRef.current.lastMessageTimestamp = msg.timestamp;
+        cacheRef.current.lastMessageTimestamp = stored.timestamp;
       }
 
       // Only trigger proposed-changes recomputation for message types that affect the code.
@@ -3661,45 +3731,47 @@ function ChatInterface({
 
   // Subscribe to chat updates
   useEffect(() => {
-    let isMounted = true;
-
     const subscribe = async () => {
       try {
-        // Subscribe using startAfter if we have a last message timestamp
-        const startAfter = cacheRef.current.lastMessageTimestamp || undefined;
+        // Load conversations via listChats/listModels. Do not pipeline those
+        // reads behind subscribeToChat: exporting a client stub on this
+        // session stalls later reads in Chrome.
+        const [chats, models] = await Promise.all([
+          overseer.listChats(),
+          overseer.listModels(),
+        ]);
 
-        // Don't await - subscribeToChat returns a promise that doesn't resolve until disconnect
-        // Store the promise itself as the subscription
-        // Pass the subscriber instance (which is now a proper class instance)
-        const subscription = overseer.subscribeToChat(
-          subscriberRef.current,
-          startAfter,
-        );
-
-        subscriptionRef.current = subscription;
-
-        if (isMounted) {
-          setIsSubscribed(true);
-
-          // After subscribing, load the list of chats and models
-          // This is safe because subscription will catch any new activity
-          const [chats, models] = await Promise.all([
-            overseer.listChats(),
-            overseer.listModels(),
-          ]);
-
-          chats.forEach((chat) => {
-            cacheRef.current.chats.set(chat.id, chat);
+        for (const chat of chats) {
+          cacheRef.current.chats.set(chat.id, {
+            ...chat,
+            started: asDate(chat.started),
+            lastActive: asDate(chat.lastActive),
           });
-          bumpChatListVersion();
-          setChatListReady(true);
-
-          setAvailableModels(models);
-
-          setSelectedModel(getStoredSelectedModel(models));
-
-          forceUpdate();
         }
+        onChatCountChangeRef.current?.(
+          cacheRef.current.chats.size,
+          cacheRef.current.chats.has(0),
+        );
+        bumpChatListVersion();
+        setChatListReady(true);
+        setAvailableModels(models);
+        setSelectedModel(getStoredSelectedModel(models));
+        forceUpdate();
+
+        // Do not export an RpcTarget subscriber over the browser session. Cap'n Web
+        // stalls later reads (`getChatHistory`) on the same WebSocket once a client
+        // stub is in the call. The GCP kernel does not push live chat events; the
+        // transcript is `listChats` + `getChatHistory`. Vitest still registers the
+        // in-process subscriber so action-card tests can emit.
+        if (import.meta.env.MODE === "test") {
+          const startAfter = cacheRef.current.lastMessageTimestamp || undefined;
+          const subscription = overseer.subscribeToChat(
+            subscriberRef.current,
+            startAfter,
+          );
+          subscriptionRef.current = subscription;
+        }
+        setIsSubscribed(true);
       } catch (err) {
         if (!logRpcFailure("Failed to subscribe to chats:", err)) {
           reportIssue('chat.subscription-load', err)
@@ -3718,7 +3790,6 @@ function ChatInterface({
     });
 
     return () => {
-      isMounted = false;
       if (subscriptionRef.current) {
         subscriptionRef.current[Symbol.dispose]();
       }
@@ -3783,57 +3854,46 @@ function ChatInterface({
   }, [selectedChatId]);
 
 
-  // Load chat history when selectedChatId changes to a non-null value
+  // Load chat history when selectedChatId changes to a non-null value.
+  // Do not abort the in-flight read on cleanup: React Strict Mode remounts this
+  // effect before getChatHistory returns, and skipping cacheHistoryPage leaves
+  // the transcript spinner up forever.
   useEffect(() => {
     if (selectedChatId === null) return;
+    const chatId = Number(selectedChatId);
+    const cache = chatCacheForWorkspace(workspaceId);
+    if (cache.messages.has(chatId)) {
+      setHistoryTick((n) => n + 1);
+      return;
+    }
 
-    // If we don't have messages for this chat yet, load them
-    if (!cacheRef.current.messages.has(selectedChatId)) {
-      let cancelled = false;
-      setIsLoading(true);
-      (async () => {
-        try {
-          const page = await overseer.getChatHistory(selectedChatId);
-          if (cancelled) return;
+    void (async () => {
+      try {
+        const page = await overseer.getChatHistory(chatId);
+        cacheHistoryPage(chatId, page);
 
-          cacheHistoryPage(selectedChatId, page);
-
-          // Update last message timestamp if needed
-          if (page.messages.length > 0) {
-            const lastMsg = page.messages[page.messages.length - 1];
-            if (
-              !cacheRef.current.lastMessageTimestamp ||
-              lastMsg.timestamp > cacheRef.current.lastMessageTimestamp
-            ) {
-              cacheRef.current.lastMessageTimestamp = lastMsg.timestamp;
-            }
-          }
-
-          // History may contain change-affecting messages that the subscriber
-          // didn't deliver (they predated the subscription). Bump the version so
-          // the proposed-changes effect re-evaluates with the loaded messages.
-          setProposedChangesVersion((prev) => prev + 1);
-          forceUpdate();
-        } catch (err) {
-          console.error("Failed to load chat history:", err);
-          // If loading fails (e.g., invalid chat ID), navigate back to chat list
-          if (!cancelled) {
-            onNavigateToChatRef.current(null, { replace: true });
-          }
-        } finally {
-          if (!cancelled) {
-            setIsLoading(false);
+        if (page.messages.length > 0) {
+          const lastMsg = page.messages[page.messages.length - 1];
+          const ts = asDate(lastMsg.timestamp);
+          if (
+            !cache.lastMessageTimestamp ||
+            ts > cache.lastMessageTimestamp
+          ) {
+            cache.lastMessageTimestamp = ts;
           }
         }
-      })();
 
-      return () => {
-        cancelled = true;
-      };
-    }
-    // LSP reports an error here, but tsc does not.
-    // The LSP error is due to bugs that need to be fixed in Cap'n Web.
-  }, [selectedChatId, overseer]);
+        setProposedChangesVersion((prev) => prev + 1);
+        setHistoryTick((n) => n + 1);
+        forceUpdate();
+      } catch (err) {
+        console.error("Failed to load chat history:", err);
+        if (selectedChatIdRef.current === chatId) {
+          onNavigateToChatRef.current(null, { replace: true });
+        }
+      }
+    })();
+  }, [selectedChatId, overseer, workspaceId]);
 
   // Sequence of the oldest message loaded, or undefined once the thread's start is loaded. Paging
   // asks for what precedes it, so the control disappears exactly when there is nothing earlier.
@@ -5163,7 +5223,7 @@ function ChatInterface({
                           render={
                             <WorkshopIconButton
                               aria-label={`Actions for ${chat.title}`}
-                              onClick={(e) => e.stopPropagation()}
+                              onClick={(e: { stopPropagation(): void }) => e.stopPropagation()}
                               className="!h-9 !w-9 flex-shrink-0 text-kumo-inactive opacity-100 focus:opacity-100 group-hover:opacity-100 data-[popup-open]:opacity-100 sm:!h-7 sm:!w-7 sm:opacity-0"
                             >
                               <DotsThreeVertical size={14} />
@@ -5380,10 +5440,12 @@ function ChatInterface({
               {/* Messages */}
               <div
                 ref={messagesContainerRef}
+                data-testid="chat-transcript"
+                data-history-count={currentMessages.length}
                 onScroll={handleMessagesScroll}
                 className="chat-panel min-h-0 flex-1 overscroll-contain overflow-y-auto"
               >
-                {isLoading ? (
+                {isLoading && currentMessages.length === 0 ? (
                   <div className="flex items-center justify-center py-10">
                     <div className="w-5 h-5 border-2 border-kumo-brand border-t-transparent rounded-full animate-spin" />
                   </div>
@@ -5931,18 +5993,6 @@ function ChatInterface({
                                       </span>
                                     </Tooltip>
                                   </button>
-                                  {isLast && msg.code === "usage_limit" && (
-                                    <Tooltip content="Add credits to continue." asChild>
-                                      <button
-                                        type="button"
-                                        onClick={() => setUsageModalOpen(true)}
-                                        className="flex flex-shrink-0 cursor-pointer items-center gap-1 rounded-md px-1 py-0.5 text-[13px] leading-4 font-medium text-kumo-default transition-[color,opacity,transform] duration-150 ease-out hover:text-kumo-default-hover focus-visible:text-kumo-default-hover focus-visible:outline-none active:scale-[0.98]"
-                                      >
-                                        <Lightning size={12} weight="bold" />
-                                        Continue
-                                      </button>
-                                    </Tooltip>
-                                  )}
                                   {isLast && msg.code !== "usage_limit" && (
                                     <Tooltip content="Retry the last action." asChild>
                                       <button
@@ -6383,10 +6433,6 @@ function ChatInterface({
         initialVendorId={connectionAccept?.vendorId}
         initialResourceUrl={connectionAccept?.resourceUrl}
         initialResourceUrlPattern={connectionAccept?.resourceUrlPattern}
-      />
-      <OutOfCreditsModal
-        open={usageModalOpen}
-        onClose={() => setUsageModalOpen(false)}
       />
     </div>
   );

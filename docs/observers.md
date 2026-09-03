@@ -505,7 +505,7 @@ its resource types.
 
 | Gatekeeper | Resource type / binding | Strategy | `addObserver` behavior |
 |---|---|---|---|
-| **cloudflare** | (no resources — auth only) | **N** | Never in scope; nothing to implement. |
+| **github** | GitHub repo | **D** | Host-mediated observation; writes queued. |
 | **email** | Email Mailbox | **D** | No-op. Synthetic per-gadget inbound address; the gadget's collaborators are the intended audience. |
 | **spotify** | Account / Playlist | **D** | No-op. Personal, low-stakes; no corp-security concern. |
 | **homeassistant** | Instance / Area / Label / Device / Entity | **D** | No-op. Self-hosted personal; the pasted long-lived token is all-or-nothing and HA exposes no per-user/per-entity ACL oracle to check against. |

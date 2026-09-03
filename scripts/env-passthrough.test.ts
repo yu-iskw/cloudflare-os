@@ -41,24 +41,10 @@ interface ExpectedArea {
 }
 
 const EXPECTED: Record<string, ExpectedArea> = {
-  "packages/gatekeeper-context": {
-    forwarded: ["VITE_FRONTEND_ERROR_REPORTING"],
-    injected: ["GATEKEEPER_APP_UNMINIFIED"],
-  },
-  "packages/gatekeeper-scheduler": {
-    forwarded: ["VITE_FRONTEND_ERROR_REPORTING"],
-    injected: ["GATEKEEPER_APP_UNMINIFIED"],
-  },
-  "packages/integration-tests": {
-    injected: ["WORKSHOP_INTEGRATION_PREBUILT"],
-    uncached: ["FORMAT_BLUEPRINTS_DIR"],
-  },
-  // `env: ['VITE_*']` — vite's `define` inlines any VITE_-prefixed variable, so the set this
-  // package can depend on is open-ended and the wildcard is the only honest declaration.
   "packages/workshop-frontend": {
     forwarded: [
       "VITE_BACKEND_HOST",
-      "VITE_CF_ACCESS_MODE",
+      "VITE_IAP_MODE",
       "VITE_DEV_AUTO_LOGIN",
       "VITE_DEV_PASSWORD",
       "VITE_DEV_USERNAME",
@@ -66,21 +52,25 @@ const EXPECTED: Record<string, ExpectedArea> = {
     ],
     injected: ["NODE_ENV"],
   },
-  "packages/workshop-backend": {
-    uncached: ["FORMAT_BLUEPRINTS_DIR"],
-  },
-  // `build-gatekeeper-configurator.ts` is covered in detail by
-  // build-gatekeeper-configurator.test.ts, which pins its reads against the shared task's `env`.
-  // `build-release.ts`, `run-local.ts` and `preview/` are invoked directly, never as vp tasks.
-  scripts: {
-    forwarded: ["VITE_FRONTEND_ERROR_REPORTING"],
+  "packages/gcp-kernel": {
     external: [
-      "CF_ACCESS_AUD", "CF_ACCESS_ISS", "CF_AI_GATEWAY", "CF_AI_GATEWAY_ACCOUNT_ID",
-      "CF_AI_GATEWAY_API_TOKEN", "CF_AI_GATEWAY_PROVIDERS", "CF_AI_GATEWAY_USE_BINDING",
-      "CI_COMMIT_SHA", "CI_PIPELINE_IID", "CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN",
-      "GITHUB_REPOSITORY", "GITHUB_TOKEN", "PREVIEW_ADMINS", "PREVIEW_NAME",
-      "PREVIEW_PR_NUMBER", "PREVIEW_WORKERS_DEV_HOST", "PREVIEW_WRANGLER", "VITE_BACKEND_HOST",
+      "AGENT_GATEWAY_URL",
+      "FRONTEND_DIST",
+      "IAP_AUDIENCE",
+      "IAP_DEV_EMAIL",
+      "PORT",
+      "PUBLIC_ORIGIN",
+      "SANDBOX_BIN",
     ],
+  },
+  "packages/gcp-sandbox": {
+    external: ["SANDBOX_BIN"],
+  },
+  "packages/gcp-gatekeeper-github": {
+    external: ["GITHUB_CLIENT_ID", "PORT", "PUBLIC_ORIGIN"],
+  },
+  "packages/backend-utils": {
+    external: ["ERROR_REPORTER_URL"],
   },
 };
 
@@ -147,8 +137,7 @@ function readsUnder(directory: string): Set<string> {
   return names;
 }
 
-// Comments in these files quote the very syntax being searched for — workshop-backend's explains why
-// it is `cache: false` "rather than `env: ['FORMAT_BLUEPRINTS_DIR']`" — so scanning raw source both
+// Comments in these files quote the very syntax being searched for, so scanning raw source both
 // reads declarations out of prose and lets a deleted one keep passing. Strip comments first.
 const stripComments = (source: string) =>
   source.replaceAll(/\/\*[\s\S]*?\*\//g, "").replaceAll(/\/\/.*$/gm, "");
@@ -212,11 +201,6 @@ describe("build-time env passthrough", () => {
 
   it("declares every forwarded variable on the task that reads it", () => {
     for (const [area, groups] of Object.entries(EXPECTED)) {
-      // `scripts/` has a `vite.config.ts`, but its only task is `test`. The forwarded read here is
-      // `build-gatekeeper-configurator.ts`'s, and the task that runs *that* is the gatekeepers'
-      // `build:configurator` -- which is the only place the `env` declaration would do anything. So
-      // there is nothing for `declarationsIn` to find on this side, and the declaration is pinned by
-      // build-gatekeeper-configurator.test.ts against the shared task's `env` instead.
       if (area === "scripts") continue;
       const { patterns } = declarationsIn(area);
       for (const name of groups.forwarded ?? []) {

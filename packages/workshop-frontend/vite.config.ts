@@ -5,20 +5,14 @@ import tsconfigPaths from 'vite-tsconfig-paths'
 import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
 import { vitestTask } from '@gadgets/scripts/vitest-task'
 
-// `dist/` is this package's own build output, excluded from the inputs of the bundle and test
-// tasks: vp declines to cache a task that reads a path it also wrote. Package-relative rather than
-// workspace-wide -- `typed-storage` emits, and its `exports` resolves to `dist/index.js`, so a
-// pattern matching every package's `dist` would drop a real input.
+// The frontend's own `dist/` is excluded from the bundle and test task inputs so those tasks can
+// cache: vp declines to cache a task that reads a path it also wrote.
 const frontendBundleTaskOptions = {
   dependsOn: ['clean:dist'],
   env: ['VITE_*'],
   input: [
     { auto: true },
     { pattern: '!dist/**', base: 'package' } as const,
-    // Wrangler's scratch bundles are randomly named, and tracking reaches past the package that
-    // owns the task, so any sibling that ran `wrangler dev` guarantees a miss here. Workspace-wide
-    // for that reason; `build:app` and the shared `test` task exclude the same tree.
-    { pattern: '!**/.wrangler/**', base: 'workspace' } as const,
   ],
   output: ['dist/**'],
 }
@@ -37,7 +31,7 @@ const runConfig = {
       /**
        * `build` is a task rather than a package.json script so `env` can declare the `VITE_*` flags
        * it reads: a cached `vp` run executes scripts in a clean environment, and the values would be
-       * missing from the fingerprint besides. `VITE_CF_ACCESS_MODE` is inlined into the bundle
+       * missing from the fingerprint besides. `VITE_IAP_MODE` is inlined into the bundle
        * (`src/useAuth.ts`) and `VITE_FRONTEND_ERROR_REPORTING` selects hidden source maps below, so
        * replaying a bundle built under different values is wrong rather than merely stale.
        *
@@ -64,7 +58,7 @@ const runConfig = {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd())
-  const backendHost = env.VITE_BACKEND_HOST?.trim() || 'localhost:8787'
+  const backendHost = env.VITE_BACKEND_HOST?.trim() || 'localhost:8080'
   const frontendErrorReporting = env.VITE_FRONTEND_ERROR_REPORTING === 'true'
   return {
     // Spread, not a literal `run: {...}`: `run` is Vite+'s field and vite's own `defineConfig` has
@@ -80,9 +74,12 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       host: true,
       proxy: {
-        '/api/client-errors': `http://${backendHost}`,
+        '/api': {
+          target: `http://${backendHost}`,
+          ws: true,
+        },
         '/blueprint-screenshot': `http://${backendHost}`,
-        '/api/site-logo': `http://${backendHost}`,
+        '/gatekeeper': `http://${backendHost}`,
       },
     },
     build: {

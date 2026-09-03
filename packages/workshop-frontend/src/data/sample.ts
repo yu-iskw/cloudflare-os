@@ -263,7 +263,7 @@ export const recentApps: App[] = [
   {
     id: 'app-1',
     title: 'Slack Channel Summarizer',
-    description: 'Summarizes unread Slack channels into a daily digest using Workers AI',
+    description: 'Summarizes unread Slack channels into a daily digest',
     gradient: 'from-[#4A154B] to-[#7C3085]',
     updatedAt: '2 hours ago',
     status: 'live',
@@ -324,11 +324,11 @@ export const recentApps: App[] = [
 export const templates: Template[] = [
   {
     id: '1',
-    title: 'Workers AI Playground',
+    title: 'Model Playground',
     description: 'Interactive AI model playground with streaming responses',
     category: 'apps',
     gradient: 'from-orange-600 via-red-600 to-pink-600',
-    author: { name: 'cloudflare', avatar: 'CF' },
+    author: { name: 'kernel', avatar: 'OS' },
     uses: 4900,
     likes: 591,
     price: 'Free',
@@ -347,7 +347,7 @@ export const templates: Template[] = [
   {
     id: '3',
     title: 'D1 Database Explorer',
-    description: 'Visual database explorer for Cloudflare D1',
+    description: 'Visual database explorer',
     category: 'apps',
     gradient: 'from-emerald-600 via-teal-600 to-cyan-600',
     author: { name: 'devtools', avatar: 'DT' },
@@ -358,10 +358,10 @@ export const templates: Template[] = [
   {
     id: '4',
     title: 'KV Store Manager',
-    description: 'Manage your Workers KV namespaces with a clean UI',
+    description: 'Manage your object store with a clean UI',
     category: 'dashboards',
     gradient: 'from-violet-600 via-purple-600 to-fuchsia-600',
-    author: { name: 'cloudflare', avatar: 'CF' },
+    author: { name: 'kernel', avatar: 'OS' },
     uses: 919,
     likes: 235,
     price: 'Free',
@@ -369,7 +369,7 @@ export const templates: Template[] = [
   {
     id: '5',
     title: 'AI Gateway Starter',
-    description: 'Route and manage AI API calls through Cloudflare',
+    description: 'Route and manage AI API calls through Agent Gateway',
     category: 'apps',
     gradient: 'from-gray-800 via-gray-700 to-gray-600',
     author: { name: 'aitools', avatar: 'AI' },
@@ -380,7 +380,7 @@ export const templates: Template[] = [
   {
     id: '6',
     title: 'R2 File Browser',
-    description: 'Upload and browse files stored in Cloudflare R2',
+    description: 'Upload and browse files stored in object storage',
     category: 'components',
     gradient: 'from-amber-600 via-orange-600 to-red-600',
     author: { name: 'storage', avatar: 'ST' },

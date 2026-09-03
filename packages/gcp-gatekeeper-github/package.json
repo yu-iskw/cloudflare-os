@@ -1,0 +1,25 @@
+{
+  "name": "@gadgets/gcp-gatekeeper-github",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "start": "node --import jiti/register src/main.ts",
+    "test:run": "vitest run"
+  },
+  "dependencies": {
+    "jiti": "^2.7.0"
+  },
+  "devDependencies": {
+    "@gadgets/scripts": "workspace:*",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

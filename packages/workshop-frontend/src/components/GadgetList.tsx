@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router'
 import { Clock, MagnifyingGlass, Hexagon, DotsThreeVertical, ShareNetwork, Trash, Info, Star, Pencil, ArrowRight } from '@phosphor-icons/react'
 import { useState, useEffect, useRef } from 'react'
-import { DropdownMenu, Dialog, Button, useKumoToastManager } from '@cloudflare/kumo'
+import { DropdownMenu, Dialog, Button, useKumoToastManager } from '@gadgets/kumo'
 import { RpcStub } from 'capnweb'
 import { useAuthenticatedApi } from '../AuthContext'
 import { GadgetMetadataWithTimestamps, BlueprintPublicInfo, Overseer, AiChatAuthorInfo } from '@gadgets/workshop-shared/api'

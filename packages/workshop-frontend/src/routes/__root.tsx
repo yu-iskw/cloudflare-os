@@ -1,18 +1,17 @@
 import { logRpcFailure } from '../rpcErrors'
 import { useState, useEffect } from 'react'
 import { createRootRoute, Outlet, useRouterState } from '@tanstack/react-router'
-import { TooltipProvider, Toasty } from '@cloudflare/kumo'
+import { TooltipProvider, Toasty } from '@gadgets/kumo'
 import { RpcStub } from 'capnweb'
 import { AuthenticatedApi } from '@gadgets/workshop-shared/api'
 import { useRpcStub, useConnectionLost } from '../RpcContext'
-import { useAuth, CF_ACCESS_MODE } from '../useAuth'
+import { useAuth, IAP_MODE } from '../useAuth'
 import { AuthProvider } from '../AuthContext'
 import { FeatureFlagsProvider } from '../FeatureFlagsContext'
 import Header from '../components/Header'
 import AppShell from '../components/AppShell/AppShell'
 import LoginPage from '../LoginPage'
 import OnboardingWizard from '../OnboardingWizard'
-import AccountSelectionModal from '../components/billing/AccountSelectionModal'
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -69,8 +68,8 @@ function RootComponent() {
     )
   }
 
-  // CF Access mode: show spinner while pipelined auth resolves
-  if (!isAuthenticated && CF_ACCESS_MODE && !standalone) {
+  // IAP mode: show spinner while pipelined auth resolves
+  if (!isAuthenticated && IAP_MODE && !standalone) {
     return (
       <div className="flex min-h-full items-center justify-center flex-col gap-4 bg-kumo-base">
         <div className="w-8 h-8 border-2 border-kumo-brand border-t-transparent rounded-full animate-spin" />
@@ -168,7 +167,6 @@ function AuthenticatedShell({
   const fullscreen = isWorkspaceEditor
   return (
     <>
-      <AccountSelectionModal />
       {fullscreen ? (
         <main className="h-full min-h-0">
           <Outlet />

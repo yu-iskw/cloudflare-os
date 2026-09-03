@@ -3,9 +3,8 @@
 > change only when, in the maintainers' assessment, it is obviously correct and
 > trivially verifiable by reading the patch.
 >
-> If you found a bug, please [file an issue](https://github.com/cloudflare/cloudflare-os/issues/new)
-> first. For feature requests and other proposals, please
-> [open a discussion](https://github.com/cloudflare/cloudflare-os/discussions).
+> If you found a bug, please file an issue first. For feature requests and other
+> proposals, please open a discussion.
 
 ## What does this change?
 
@@ -23,3 +22,5 @@ a pull request meets the contribution policy.
 - [ ] <!-- contribution-policy:concrete-change --> This is a small, concrete change; it is not a feature, refactor, or low-value cleanup.
 - [ ] <!-- contribution-policy:maintainer-assessment --> I understand that maintainers decide whether the change is obviously correct and trivially verifiable.
 - [ ] <!-- contribution-policy:guidelines --> I have read and followed the contribution guidelines.
+- [ ] I have run `pnpm lint` and `pnpm test` locally
+- [ ] I have not introduced a forbidden vendor token in tracked files

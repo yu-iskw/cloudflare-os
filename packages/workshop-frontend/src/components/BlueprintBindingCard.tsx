@@ -1,4 +1,4 @@
-import { Checkbox } from '@cloudflare/kumo'
+import { Checkbox } from '@gadgets/kumo'
 import type { RpcStub } from 'capnweb'
 import { GatekeeperIcon } from './GatekeeperIcon'
 import { WorkshopInput, WorkshopInputArea } from './WorkshopControls'

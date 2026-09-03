@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Loader } from '@cloudflare/kumo'
+import { Loader } from '@gadgets/kumo'
 import {
   Code as CodeIcon,
   Database,

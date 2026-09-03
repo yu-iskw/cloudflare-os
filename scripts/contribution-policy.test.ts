@@ -307,7 +307,7 @@ describe("enforceContributionPolicy", () => {
 
 const context: ActionsContext = {
   issue: { number: 123 },
-  repo: { owner: "cloudflare", repo: "cloudflare-os" },
+  repo: { owner: "example", repo: "company-os" },
 };
 
 const core: ActionsCore = { notice() {} };

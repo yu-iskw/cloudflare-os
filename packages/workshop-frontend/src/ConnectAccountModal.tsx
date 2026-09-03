@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Dialog, Text, Loader, useKumoToastManager } from '@cloudflare/kumo'
+import { Dialog, Text, Loader, useKumoToastManager } from '@gadgets/kumo'
 import { RpcStub } from 'capnweb'
 import { AuthenticatedApi, GatekeeperVendorFilter } from '@gadgets/workshop-shared/api'
 import { VendorDescription } from '@gadgets/workshop-shared/gatekeeper'
