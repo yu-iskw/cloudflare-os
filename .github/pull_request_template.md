@@ -17,7 +17,10 @@
 ## Checklist
 
 Checking every item does not guarantee acceptance. Maintainers determine whether
-the change is obviously correct and trivially verifiable.
+a pull request meets the contribution policy.
 
+- [ ] <!-- contribution-policy:concrete-change --> This is a small, concrete change; it is not a feature, refactor, or low-value cleanup.
+- [ ] <!-- contribution-policy:maintainer-assessment --> I understand that maintainers decide whether the change is obviously correct and trivially verifiable.
+- [ ] <!-- contribution-policy:guidelines --> I have read and followed the contribution guidelines.
 - [ ] I have run `pnpm lint` and `pnpm test` locally
 - [ ] I have not introduced a forbidden vendor token in tracked files

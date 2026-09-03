@@ -76,7 +76,7 @@ export class GcsGitBackend implements GitObjectBackend {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/octet-stream",
       },
-      body: data,
+      body: data as never,
     });
     if (!res.ok) throw new Error(`gcs put ${res.status}`);
   }

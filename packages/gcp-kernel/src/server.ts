@@ -49,7 +49,7 @@ export function createKernelServer(options: KernelOptions = {}): {
   wss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
     const assertion = header(req, "x-goog-iap-jwt-assertion");
     const api = new PublicApiImpl(ledger, replicaId, assertion);
-    newWebSocketRpcSession(ws, api);
+    newWebSocketRpcSession(ws as never, api);
   });
   return { server, ledger };
 }

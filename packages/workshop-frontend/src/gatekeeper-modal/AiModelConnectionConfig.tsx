@@ -28,7 +28,7 @@ export function AiModelConnectionConfig({
           placeholder="Select an AI model"
           value={selectedModelId}
           onValueChange={(v) => onSelectedModelIdChange(v as string | undefined)}
-          renderValue={(id) => availableModels.find((m) => m.id === id)?.name ?? id}
+          renderValue={(id) => availableModels.find((m) => m.id === id)?.name ?? String(id)}
         >
           {availableModels.map(model => (
             <Select.Option key={model.id} value={model.id}>

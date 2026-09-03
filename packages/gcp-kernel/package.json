@@ -11,7 +11,7 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
-    "start": "node --experimental-strip-types src/main.ts",
+    "start": "node --import jiti/register src/main.ts",
     "test:run": "vitest run"
   },
   "dependencies": {
@@ -21,7 +21,8 @@
     "@gadgets/gcp-sandbox": "workspace:*",
     "@gadgets/workshop-shared": "workspace:*",
     "capnweb": "catalog:",
-    "ws": "^8.18.3"
+    "ws": "^8.18.3",
+    "jiti": "^2.7.0"
   },
   "devDependencies": {
     "@gadgets/scripts": "workspace:*",

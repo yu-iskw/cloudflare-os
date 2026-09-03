@@ -200,15 +200,16 @@ export function Button(
 }
 
 export function Input(
-  props: InputHTMLAttributes<HTMLInputElement> & {
+  props: Omit<InputHTMLAttributes<HTMLInputElement>, "size"> & {
     label?: ReactNode;
     description?: ReactNode;
     error?: ReactNode;
     variant?: string;
+    size?: string | number;
     onValueChange?: (value: string) => void;
   } & Rest,
 ) {
-  const { label, description, error, variant: _v, onValueChange, onChange, ...rest } = props;
+  const { label, description, error, variant: _v, size: _size, onValueChange, onChange, ...rest } = props;
   return (
     <FieldChrome label={label} description={description} error={error}>
       <input
@@ -464,7 +465,9 @@ export function Text({
   );
 }
 
-export function Banner({
+export const Banner = asCompound(BannerRoot, { Action: BannerAction });
+
+function BannerRoot({
   variant: _v,
   title,
   children,
@@ -475,6 +478,14 @@ export function Banner({
       {title}
       {children}
     </div>
+  );
+}
+
+function BannerAction(props: ButtonHTMLAttributes<HTMLButtonElement> & Rest) {
+  return (
+    <button type="button" {...(omitExtra(props as Rest) as ButtonHTMLAttributes<HTMLButtonElement>)}>
+      {props.children}
+    </button>
   );
 }
 

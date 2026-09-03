@@ -14,7 +14,9 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 async function sha256(data: Uint8Array): Promise<Uint8Array> {
-  return new Uint8Array(await crypto.subtle.digest("SHA-256", data));
+  const copy = new Uint8Array(data.byteLength);
+  copy.set(data);
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", copy));
 }
 
 function newToken(): string {
@@ -109,7 +111,7 @@ export class PublicApiImpl extends RpcTarget {
       passwordHashHash: await sha256(passwordHash),
       sessionToken: session,
       preferredModel: null,
-      onboardingCompleted: false,
+      onboardingCompleted: true,
     };
     this.ledger.putUser(user);
     return session;

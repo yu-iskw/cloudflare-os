@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
-import { newWebSocketRpcSession } from "capnweb";
-import type { PublicApi } from "@gadgets/workshop-shared/api";
+import { RpcTarget, newWebSocketRpcSession } from "capnweb";
+import type { GadgetMetadata, PublicApi } from "@gadgets/workshop-shared/api";
 import { createKernelServer } from "../src/server.js";
 import type { Server } from "node:http";
 
@@ -25,7 +25,7 @@ describe("Cap'n Web /api", () => {
       ws.once("open", () => resolve());
       ws.once("error", reject);
     });
-    const stub = newWebSocketRpcSession<PublicApi>(ws);
+    const stub = newWebSocketRpcSession<PublicApi>(ws as never);
     await stub.ping();
     const config = await stub.getServerConfig();
     expect(config.passwordAuthEnabled).toBe(true);
@@ -42,7 +42,7 @@ describe("Cap'n Web /api", () => {
       ws.once("open", () => resolve());
       ws.once("error", reject);
     });
-    const stub = newWebSocketRpcSession<PublicApi>(ws);
+    const stub = newWebSocketRpcSession<PublicApi>(ws as never);
     const hash = new Uint8Array(32);
     const token = await stub.createAccount("ada", "Ada", hash);
     expect(token).toBeTruthy();
@@ -56,6 +56,41 @@ describe("Cap'n Web /api", () => {
     ws.close();
   });
 
+  it("skips onboarding and delivers metadata plus connected-accounts ready", async () => {
+    const started = createKernelServer();
+    server = started.server;
+    const port = await listen(server);
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/api`);
+    await opened(ws);
+    const stub = newWebSocketRpcSession<PublicApi>(ws as never);
+    const hash = new Uint8Array(32);
+    const token = await stub.createAccount("ada", "Ada", hash);
+    const authed = stub.authenticate(token!);
+    expect(await authed.isOnboardingCompleted()).toBe(true);
+    const models = await authed.listModels();
+    expect(models[0]?.id).toBe("gemini-3.6-flash");
+
+    let accountsReady = false;
+    class AccountsSub extends RpcTarget {
+      add(): void {}
+      remove(): void {}
+      ready(): void {
+        accountsReady = true;
+      }
+    }
+    await authed.subscribeConnectedAccounts(new AccountsSub() as never);
+    await expect.poll(() => accountsReady).toBe(true);
+
+    const overseer = authed.newGadget();
+    const meta = await new Promise<GadgetMetadata>((resolve) => {
+      void overseer.subscribeToMetadata((next) => resolve(next));
+    });
+    expect(meta.title).toBe("Untitled Workspace");
+
+    stub[Symbol.dispose]();
+    ws.close();
+  });
+
   it("accepts a second WebSocket after the first is disposed", async () => {
     const started = createKernelServer();
     server = started.server;
@@ -63,14 +98,14 @@ describe("Cap'n Web /api", () => {
 
     const first = new WebSocket(`ws://127.0.0.1:${port}/api`);
     await opened(first);
-    const stub1 = newWebSocketRpcSession<PublicApi>(first);
+    const stub1 = newWebSocketRpcSession<PublicApi>(first as never);
     await stub1.ping();
     stub1[Symbol.dispose]();
     first.close();
 
     const second = new WebSocket(`ws://127.0.0.1:${port}/api`);
     await opened(second);
-    const stub2 = newWebSocketRpcSession<PublicApi>(second);
+    const stub2 = newWebSocketRpcSession<PublicApi>(second as never);
     await stub2.ping();
     stub2[Symbol.dispose]();
     second.close();

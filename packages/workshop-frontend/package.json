@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "NODE_OPTIONS=--experimental-strip-types vite",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "test:run": "vitest run"

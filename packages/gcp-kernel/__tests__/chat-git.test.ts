@@ -10,7 +10,7 @@ describe("chat + Code Mode + git", () => {
   it("appends chat rows and runs sandbox do for a code fence", async () => {
     const dir = await mkdtemp(join(tmpdir(), "sb-"));
     const bin = join(dir, "sandbox");
-    await writeFile(bin, "#!/bin/sh\nprintf hi\n");
+    await writeFile(bin, "#!/bin/sh\ncat >/dev/null\nprintf hi\n");
     await chmod(bin, 0o755);
     process.env.SANDBOX_BIN = bin;
 
@@ -20,8 +20,9 @@ describe("chat + Code Mode + git", () => {
     const chatId = await overseer.newChat("```js\n1+1\n```", "gemini-3.6-flash");
     const page = await overseer.getChatHistory(chatId);
     expect(page.messages.length).toBeGreaterThan(1);
-    const last = page.messages[page.messages.length - 1] as { content?: { text?: string }[] };
-    expect(JSON.stringify(last)).toContain("hi");
+    const last = page.messages[page.messages.length - 1];
+    expect(last?.type).toBe("message");
+    expect(last && "message" in last ? last.message : "").toContain("hi");
     delete process.env.SANDBOX_BIN;
   });
 

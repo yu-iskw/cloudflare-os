@@ -46,6 +46,9 @@ export async function sandboxDo(code: string, options: SandboxOptions = {}): Pro
       clearTimeout(timer);
       resolve({ stdout, stderr, exitCode });
     });
+    child.stdin.on("error", () => {
+      // The box may close stdin before we finish writing (deny-egress fake binaries).
+    });
     child.stdin.write(code);
     child.stdin.end();
   });

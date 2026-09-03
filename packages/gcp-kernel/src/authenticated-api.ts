@@ -4,18 +4,18 @@ import type {
   AdminApi,
   AiChatAuthorInfo,
   AiGatewayInfo,
-  AuthenticatedApi,
+  ConnectedAccountsSubscriber,
   GadgetMetadataWithTimestamps,
   GatekeeperVendorInfo,
   ListOutputsResult,
   Overseer,
   OutputFormatOffer,
-  UiFeatureFlags,
 } from "@gadgets/workshop-shared/api";
-import { DEFAULT_UI_FEATURE_FLAGS } from "@gadgets/workshop-shared/feature-flags";
+import { DEFAULT_UI_FEATURE_FLAGS, type UiFeatureFlags } from "@gadgets/workshop-shared/feature-flags";
 import { MemoryLedger, type UserRow } from "@gadgets/gcp-ledger";
 import { GitStore, MemoryGitBackend } from "@gadgets/gcp-git";
 import { OverseerImpl } from "./overseer.js";
+import { dummySub } from "./rpc-stubs.js";
 
 /** Session API for a signed-in user. */
 export class AuthenticatedApiImpl extends RpcTarget {
@@ -52,7 +52,7 @@ export class AuthenticatedApiImpl extends RpcTarget {
   }
 
   async listModels(): Promise<AiChatAuthorInfo[]> {
-    return [];
+    return [{ type: "agent", id: "gemini-3.6-flash", name: "Gemini" }];
   }
 
   async addModel(): Promise<void> {}
@@ -195,6 +195,17 @@ export class AuthenticatedApiImpl extends RpcTarget {
   async importBlueprint(): Promise<string> {
     throw new Error("importBlueprint is not available");
   }
+  /**
+   * Replay connected accounts (none in the v1 kernel), then `ready()`.
+   * The SPA onboarding/home chips require this method to exist.
+   */
+  async subscribeConnectedAccounts(
+    subscriber: ConnectedAccountsSubscriber,
+  ): Promise<ReturnType<typeof dummySub>> {
+    subscriber.ready();
+    return dummySub();
+  }
+
   async reconnectAccount(): Promise<{ url: string }> {
     return this.connectAccount("github");
   }

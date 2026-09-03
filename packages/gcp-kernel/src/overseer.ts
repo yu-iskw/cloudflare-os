@@ -1,16 +1,28 @@
 import { RpcStub, RpcTarget } from "capnweb";
 import type {
+  ActionHistoryPage,
   AiChatAuthorInfo,
   AiChatHistoryPage,
+  AiChatMessage,
   AiChatMetadata,
+  AiChatSubscriber,
+  BoundHookInfo,
   GadgetMetadata,
   Overseer,
   SlashCommandChoice,
+  WorkpiecesSubscriber,
 } from "@gadgets/workshop-shared/api";
-import { MemoryLedger } from "@gadgets/gcp-ledger";
+import { MemoryLedger, type ChatMessageRow } from "@gadgets/gcp-ledger";
 import { GitStore } from "@gadgets/gcp-git";
 import { sandboxDo } from "@gadgets/gcp-sandbox";
 import { completeThroughGateway, defaultArmorFloor } from "@gadgets/gcp-agent";
+import { dummySub } from "./rpc-stubs.js";
+
+const DEFAULT_MODEL: AiChatAuthorInfo = {
+  type: "agent",
+  id: "gemini-3.6-flash",
+  name: "Gemini",
+};
 
 const gateway = {
   async complete(req: { prompt: string; model: string }) {
@@ -28,6 +40,8 @@ const gateway = {
 
 /** Workspace actor analog: lease + SQL/memory rows + git pointers. */
 export class OverseerImpl extends RpcTarget {
+  #chatSubscribers = new Set<AiChatSubscriber>();
+
   constructor(
     private readonly ledger: MemoryLedger,
     private readonly git: GitStore,
@@ -60,101 +74,119 @@ export class OverseerImpl extends RpcTarget {
   }
 
   async listChats(): Promise<AiChatMetadata[]> {
-    const out: AiChatMetadata[] = [];
-    for (const chat of this.ledger.chats.values()) {
-      if (chat.workspaceId === this.workspaceId) {
-        const now = new Date();
-        out.push({ id: chat.id, title: chat.title, started: now, lastActive: now });
-      }
-    }
-    return out;
+    return this.#chatMeta();
   }
 
   async listModels(): Promise<AiChatAuthorInfo[]> {
-    return [{ type: "model", id: "gemini-3.6-flash", name: "Gemini" }];
+    return [DEFAULT_MODEL];
   }
 
   async getChatHistory(chatId: number): Promise<AiChatHistoryPage> {
     const messages = this.ledger.chatMessages.get(chatId) ?? [];
-    return {
-      messages: messages.map((m) => ({
-        chatId,
-        sequence: m.sequence,
-        author: { type: "user" as const, id: this.userId, name: "user" },
-        content: [{ type: "text" as const, text: m.body }],
-        created: new Date(),
-      })),
-    } as unknown as AiChatHistoryPage;
+    return { messages: messages.map((row) => this.#toMessage(row)) };
   }
 
   async newChat(initialMessage: string, modelId: string | null): Promise<number> {
     const text = typeof initialMessage === "string" ? initialMessage : "";
-    const id = this.ledger.chats.size + 1;
-    this.ledger.chats.set(id, { id, workspaceId: this.workspaceId, title: text.slice(0, 40) || "New Chat" });
-    this.ledger.appendChatMessage({ chatId: id, sequence: 0, role: "user", body: text });
-    await this.#maybeAgent(id, text, modelId);
-    return id;
+    const chat = this.ledger.createChat(this.workspaceId, text.slice(0, 40) || "New Chat");
+    const userRow = this.ledger.appendChatMessage({
+      chatId: chat.id,
+      sequence: 0,
+      role: "user",
+      body: text,
+    });
+    this.#emitChat(chat.id, userRow);
+    await this.#maybeAgent(chat.id, text, modelId);
+    return chat.id;
   }
 
   async sendChatMessage(chatId: number, message: string, modelId: string | null): Promise<void> {
     const text = typeof message === "string" ? message : "";
     const list = this.ledger.chatMessages.get(chatId) ?? [];
-    this.ledger.appendChatMessage({
+    const userRow = this.ledger.appendChatMessage({
       chatId,
       sequence: list.length,
       role: "user",
       body: text,
     });
+    this.#emitChat(chatId, userRow);
     await this.#maybeAgent(chatId, text, modelId);
   }
 
   async #maybeAgent(chatId: number, text: string, modelId: string | null): Promise<void> {
-    if (!modelId) return;
     const code = extractCodeFence(text);
-    let body: string;
+    let body: string | undefined;
     if (code) {
       const result = await sandboxDo(code, {
         binary: process.env.SANDBOX_BIN,
         timeoutMs: 15_000,
       });
       body = result.stdout || result.stderr || `(exit ${result.exitCode})`;
-    } else {
+    } else if (modelId) {
       const completion = await completeThroughGateway(gateway, defaultArmorFloor, {
         model: modelId,
         prompt: text,
       });
       body = completion.blocked ? "(blocked by model armor)" : completion.text;
     }
+    if (body === undefined) return;
     const list = this.ledger.chatMessages.get(chatId) ?? [];
-    this.ledger.appendChatMessage({
+    const row = this.ledger.appendChatMessage({
       chatId,
       sequence: list.length,
       role: "assistant",
       body,
     });
+    this.#emitChat(chatId, row);
   }
 
   async listSlashCommands(): Promise<SlashCommandChoice[]> {
     return [];
   }
 
-  async subscribeToMetadata(): Promise<RpcStub<{}>> {
+  async listActions(): Promise<ActionHistoryPage> {
+    return { entries: [] };
+  }
+
+  async listHooks(): Promise<BoundHookInfo[]> {
+    return [];
+  }
+
+  /**
+   * Push current metadata immediately so the SPA can leave the loading spinner.
+   * The callback is a client stub; invoke without awaiting (promise pipelining).
+   */
+  async subscribeToMetadata(
+    callback: (metadata: GadgetMetadata) => void,
+  ): Promise<RpcStub<{}>> {
+    callback(await this.getMetadata());
     return dummySub();
   }
 
-  async subscribeToPresence(): Promise<RpcStub<{}>> {
+  async subscribeToPresence(subscriber: { init(participants: unknown[]): void }): Promise<RpcStub<{}>> {
+    subscriber.init([]);
     return dummySub();
   }
 
-  async subscribeToWorkpieces(): Promise<RpcStub<{}>> {
+  async subscribeToWorkpieces(subscriber: WorkpiecesSubscriber): Promise<RpcStub<{}>> {
+    subscriber.ready();
     return dummySub();
   }
 
-  async subscribeToActions(): Promise<RpcStub<{}>> {
+  async subscribeToActions(subscriber: { ready?(): void }): Promise<RpcStub<{}>> {
+    subscriber.ready?.();
     return dummySub();
   }
 
-  async subscribeToChat(): Promise<RpcStub<{}>> {
+  async subscribeToChat(subscriber: AiChatSubscriber): Promise<RpcStub<{}>> {
+    this.#chatSubscribers.add(subscriber);
+    subscriber.streamGeneration(1);
+    for (const meta of this.#chatMeta()) {
+      subscriber.metadata(meta);
+      for (const row of this.ledger.chatMessages.get(meta.id) ?? []) {
+        subscriber.message(this.#toMessage(row));
+      }
+    }
     return dummySub();
   }
 
@@ -180,11 +212,39 @@ export class OverseerImpl extends RpcTarget {
     const files = await this.git.readCommitFiles(commitId);
     return { files: [...files.entries()] };
   }
-}
 
-function dummySub(): RpcStub<{}> {
-  const target = new RpcTarget();
-  return target as unknown as RpcStub<{}>;
+  #chatMeta(): AiChatMetadata[] {
+    const now = new Date();
+    const out: AiChatMetadata[] = [];
+    for (const chat of this.ledger.chats.values()) {
+      if (chat.workspaceId !== this.workspaceId) continue;
+      out.push({ id: chat.id, title: chat.title, started: now, lastActive: now });
+    }
+    return out;
+  }
+
+  #toMessage(row: ChatMessageRow): AiChatMessage {
+    const assistant = row.role === "assistant";
+    return {
+      chatId: row.chatId,
+      sequence: row.sequence,
+      timestamp: new Date(),
+      author: assistant
+        ? DEFAULT_MODEL
+        : { type: "user", id: this.userId, name: "user" },
+      type: "message",
+      message: row.body,
+    };
+  }
+
+  #emitChat(chatId: number, row: ChatMessageRow): void {
+    const meta = this.#chatMeta().find((c) => c.id === chatId);
+    const msg = this.#toMessage(row);
+    for (const subscriber of this.#chatSubscribers) {
+      if (meta) subscriber.metadata(meta);
+      subscriber.message(msg);
+    }
+  }
 }
 
 function extractCodeFence(text: string): string | undefined {

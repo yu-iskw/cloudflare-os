@@ -5143,7 +5143,7 @@ function ChatInterface({
                           render={
                             <WorkshopIconButton
                               aria-label={`Actions for ${chat.title}`}
-                              onClick={(e) => e.stopPropagation()}
+                              onClick={(e: { stopPropagation(): void }) => e.stopPropagation()}
                               className="!h-9 !w-9 flex-shrink-0 text-kumo-inactive opacity-100 focus:opacity-100 group-hover:opacity-100 data-[popup-open]:opacity-100 sm:!h-7 sm:!w-7 sm:opacity-0"
                             >
                               <DotsThreeVertical size={14} />

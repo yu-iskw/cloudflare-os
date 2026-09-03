@@ -413,7 +413,7 @@ function FileRow({
             render={(
               <WorkshopIconButton
                 aria-label={`Actions for ${filename}`}
-                onClick={(event) => event.stopPropagation()}
+                onClick={(event: { stopPropagation(): void }) => event.stopPropagation()}
                 className="!h-8 !w-8 text-kumo-inactive opacity-100 hover:bg-kumo-tint hover:text-kumo-default focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 data-[popup-open]:opacity-100 md:!h-5 md:!w-5 md:opacity-0"
               >
                 <DotsThree size={14} weight="bold" />

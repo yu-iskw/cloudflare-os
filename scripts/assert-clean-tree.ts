@@ -5,7 +5,8 @@
  */
 import { execFileSync } from "node:child_process";
 
-const NEEDLE = "c" + "loudflare";
+/** Contiguous spelling of the token would make this file fail its own scan. */
+const NEEDLE = String.fromCharCode(0x63, 0x6c, 0x6f, 0x75, 0x64, 0x66, 0x6c, 0x61, 0x72, 0x65);
 
 function gitGrep(pathspec: string[]): string {
   try {

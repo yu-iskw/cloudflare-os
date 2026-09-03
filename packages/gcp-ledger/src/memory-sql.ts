@@ -178,6 +178,14 @@ export class MemoryLedger {
     return stored;
   }
 
+  /** Allocate a chat id unique within this ledger. */
+  createChat(workspaceId: string, title: string): ChatRow {
+    const id = this.#nextChat++;
+    const row: ChatRow = { id, workspaceId, title };
+    this.chats.set(id, row);
+    return row;
+  }
+
   /**
    * Persist a Gatekeeper capability record (ids + token metadata). Never a live RPC stub.
    */
