@@ -10,6 +10,9 @@ vi.stubGlobal('ResizeObserver', class {
   observe() {}
   disconnect() {}
 })
+if (!Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = function scrollTo() {}
+}
 
 vi.mock('@gadgets/kumo', async (importOriginal) => {
   const actual = await importOriginal() as typeof import('@gadgets/kumo')
